@@ -627,3 +627,5 @@ tbody tr:hover { background: var(--accent-subtle); }
   .rules li { flex-wrap: wrap; }
   .hour-bars { grid-template-columns: 22px repeat(24, 1fr); }
 }
+.heat .c { aspect-ratio: auto; height: 20px; }
+@media (max-width: 720px) { .heat .c { height: 12px; } }

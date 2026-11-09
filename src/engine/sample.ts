@@ -73,7 +73,7 @@ const toUtc = (wall: number, tz: string) => { const g = wall - tzOffset(wall, tz
 export function generate(def: SampleDef): Stream[] {
   const r = rng(def.seed)
   const tail: Artist[] = []
-  for (let i = 0; i < 70; i++) tail.push(makeArtist(r, `${WORDS_A[i % 20]} ${WORDS_B[(i * 7 + 3) % 20]}`, 4 + Math.floor(r() * 6)))
+  for (let i = 0; i < 70; i++) tail.push(makeArtist(r, `${WORDS_A[i % 20]} ${WORDS_B[(i * 7 + Math.floor(i / 20) + 3) % 20]}`, 4 + Math.floor(r() * 6)))
   const groups = Object.fromEntries(Object.entries(NAMED).map(([g, names]) => [g, names.map(n => makeArtist(r, n, 9 + Math.floor(r() * 5)))])) as Record<keyof typeof NAMED, Artist[]>
   const sleep = special(r, SLEEP_ARTIST, SLEEP_TRACKS, 'Sleep Sounds, Vol. 3', 175_000)
   const kids = special(r, KIDS_ARTIST, KIDS_TRACKS, 'Kids Songs for Little Feet', 125_000)
@@ -127,9 +127,11 @@ export function generate(def: SampleDef): Stream[] {
       // A session sticks to one or two artists for a while, like an album or "This is" playlist.
       const n = 4 + Math.floor(-Math.log(1 - r()) * 9)
       const [group] = pick(r, groupsNow, x => x[1])
-      let artist = pick(r, group, (_, i) => 1 / (i + 1))
+      // The long tail unlocks over time, so new artists keep turning up (discovery rate).
+      const w = (g: Artist[], i: number, k: number) => g === tail && i / tail.length > p + 0.08 ? 0 : 1 / (g === tail ? (i % 7) + 1 : i + 1) ** k
+      let artist = pick(r, group, (_, i) => w(group, i, 1))
       for (let j = 0; j < n; j++) {
-        if (r() < 0.25) { const [g] = pick(r, groupsNow, x => x[1]); artist = pick(r, g, (_, i) => 1 / (i + 1) ** 0.8) }
+        if (r() < 0.25) { const [g] = pick(r, groupsNow, x => x[1]); artist = pick(r, g, (_, i) => w(g, i, 0.8)) }
         const t = pick(r, artist.tracks, (x, i) => (1 / (i + 1) ** 1.1) * (lastFor.get(artist) === x ? 0.1 : 1))
         lastFor.set(artist, t)
         const skip = r() < t.skippy + (shuffle ? 0.08 : 0)
@@ -161,7 +163,9 @@ export function generate(def: SampleDef): Stream[] {
       }
     }
   }
-  return out.sort((a, b) => a.ts - b.ts)
+  // Keep the history inside the requested months (late-night sessions can spill past the end).
+  const last = toUtc(end, def.tz)
+  return out.filter(s => s.ts < last).sort((a, b) => a.ts - b.ts)
 }
 
 /** The rules a user would add to "fix" the Theo sample. Off by default so the problem is visible first. */

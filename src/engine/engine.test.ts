@@ -174,6 +174,8 @@ test('the sleep-sounds sample is fixed by its suggested rule', () => {
   const sugg = suggestRules(base.ctx)
   assert.ok(sugg.some(x => x.rule.kind === 'keyword' && x.rule.value === 'sleep'))
   const rules = sampleRules(def, () => crypto.randomUUID()).map(r => ({ ...r, on: true }))
+  const after = suggestRules(base.ctx, rules)
+  assert.ok(!after.some(x => ['sleep', 'rain', 'brown noise'].includes(x.rule.value)), 'keywords already covered by a rule are not suggested again')
   const fixed = prepare(list, { ...S, tz: def.tz, rules })
   const top5 = top(fixed.ctx, 'track', 'ms', 5)
   assert.ok(top5.every(t => !/Quiet Hours|Puddle/.test(t.sub)), 'no noise left in the top 5')

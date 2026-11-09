@@ -27,11 +27,12 @@ function Overview({ project, prep }: TabProps) {
   }, [ctx, project.settings.rules])
   if (!ctx.s.length) return <Empty title="Every stream is excluded"><p className="muted">Your exclusion rules hide the whole history. <Link href={`/app/p/${project.id}/fix`}>Review the rules</Link>.</p></Empty>
   const noisy = d.sugg.filter(s => s.rule.kind === 'keyword' || s.rule.kind === 'artist')
+  const offRules = project.settings.rules.filter(r => !r.on).length && !project.settings.rules.some(r => r.on) ? project.settings.rules.length : 0
   return (
     <>
-      {noisy.length > 0 && (
+      {(noisy.length > 0 || offRules > 0) && (
         <div className="banner warn">
-          <span><b>Your stats may be polluted.</b> {noisy[0].why}{noisy.length > 1 ? ` and ${noisy.length - 1} more pattern${noisy.length > 2 ? 's' : ''} look like sleep, noise or kids' audio.` : '.'}</span>
+          <span><b>Your stats may be polluted.</b> {offRules > 0 ? `${offRules} exclusion rule${offRules > 1 ? 's are' : ' is'} switched off` : noisy[0].why}{noisy.length > 0 ? `${offRules ? '; ' : ' and '}${noisy.length} pattern${noisy.length > 1 ? 's' : ''} look like sleep, noise or kids' audio.` : '.'}</span>
           <Link href={`/app/p/${project.id}/fix`} className="btn primary sm">Fix my Wrapped</Link>
         </div>
       )}

@@ -504,7 +504,14 @@ export function suggestRules(ctx: Ctx, existing: Rule[] = []): Suggestion[] {
   const totalMusic = ctx.s.reduce((a, s) => a + (isMusic(s) ? s.ms : 0), 0) || 1
   for (const kw of NOISE_KEYWORDS) {
     if (has('keyword', kw)) continue
-    const im = ruleReach(ctx.s, { id: '', kind: 'keyword', value: kw, on: true }, ctx.tz, ctx.minMs)
+    const cand: Rule = { id: '', kind: 'keyword', value: kw, on: true }
+    const im = ruleReach(ctx.s, cand, ctx.tz, ctx.minMs)
+    // Skip keywords that an existing rule (on or off) already mostly covers.
+    if (existing.length && im.streams) {
+      let covered = 0
+      for (const s of ctx.s) if (ruleMatches(s, cand, ctx.tz) && existing.some(r => ruleMatches(s, r, ctx.tz))) covered++
+      if (covered / im.streams >= 0.8) continue
+    }
     if (im.streams >= 20 && im.ms / totalMusic >= 0.005) out.push({ rule: { kind: 'keyword', value: kw, label: `Titles containing “${kw}”` }, why: `${im.streams.toLocaleString('en-US')} streams mention “${kw}”`, ms: im.ms, streams: im.streams })
   }
   const night = new Map<string, { n: number; all: number; streams: number }>()

@@ -42,7 +42,7 @@ export async function drawCard(canvas: HTMLCanvasElement, r: Review, o: { format
 
   const pad = 88
   const story = o.format === 'story'
-  let y = story ? 190 : 120
+  let y = story ? 230 : 120
   ctx.fillStyle = th.sub
   ctx.font = F(700, 30)
   ctx.textBaseline = 'alphabetic'
@@ -80,7 +80,7 @@ export async function drawCard(canvas: HTMLCanvasElement, r: Review, o: { format
     }
   } else {
     const list = (o.kind === 'tracks' ? r.topTracks : r.topArtists).slice(0, 5)
-    const step = story ? 200 : 132
+    const step = story ? 236 : 132
     list.forEach((it, i) => {
       ctx.fillStyle = th.rank
       ctx.font = F(800, story ? 96 : 72)

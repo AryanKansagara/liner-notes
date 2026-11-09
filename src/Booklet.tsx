@@ -5,7 +5,7 @@ import { lastYearStart, usePrepared, useProject } from './projectData.ts'
 import { reviewStartFromUrl } from './Review.tsx'
 import { DAYS, Empty, fmtDay, fmtHour, fmtN, fmtPct, fmtYm, Link, ThemeToggle } from './ui.tsx'
 
-const mmss = (ms: number) => { const m = Math.round(ms / 60_000); return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}:00` : `${m}:00` }
+const mmss = (ms: number) => { const m = Math.round(ms / 60_000); return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} m` : `${m} m` }
 
 export default function Booklet({ id }: { id: string }) {
   const { loading, project, ds } = useProject(id)

@@ -2,7 +2,7 @@
 
 A private, year-round deep dive into your own Spotify Extended Streaming History, with the "fix my Wrapped" controls people keep asking for.
 
-**Live:** https://liner-notes.vercel.app
+**Live:** https://liner-notes-three-nu.vercel.app (the plain liner-notes.vercel.app alias belongs to another project)
 
 ## The pain
 

@@ -369,8 +369,10 @@ tbody tr:hover { background: var(--accent-subtle); }
 .fix-impact small { color: var(--ink-3); font-size: 12px; display: block; }
 .kind { font: 500 11.5px/1 var(--font-sans); padding: 4px 8px; border-radius: 999px; background: var(--bg-2); border: 1px solid var(--line); color: var(--ink-2); }
 .issues { max-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-md); font-size: 13px; }
-.issues div { padding: 6px 10px; border-bottom: 1px solid var(--line-2); display: flex; gap: 10px; }
-.issues .ln { font-family: var(--font-mono); color: var(--ink-3); min-width: 64px; }
+.issues div { padding: 6px 10px; border-bottom: 1px solid var(--line-2); display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.issues .ln { font-family: var(--font-mono); color: var(--ink-3); min-width: 64px; overflow-wrap: anywhere; }
+.report-table { min-width: 620px; }
+.report-table th.break { min-width: 15em; overflow-wrap: anywhere; }
 .issues .error-row .ln { color: var(--bad); }
 .drop { border: 1.5px dashed var(--border); border-radius: var(--r-xl); padding: 34px 20px; text-align: center; background: var(--card); transition: border-color .2s, background-color .2s; cursor: pointer; }
 .drop.over { border-color: var(--accent); background: var(--accent-subtle); }
@@ -629,3 +631,4 @@ tbody tr:hover { background: var(--accent-subtle); }
 }
 .heat .c { aspect-ratio: auto; height: 20px; }
 @media (max-width: 720px) { .heat .c { height: 12px; } }
+.report-table .kind { white-space: nowrap; }

@@ -78,7 +78,7 @@ export default function Import({ project, ds, update }: { project: Project; ds: 
       {pending && (
         <div className="panel">
           <div className="panel-head"><h2>Validation report</h2><span className="muted small">{fmtN(pending.result.streams.length)} unique streams after de-duplication</span></div>
-          <div className="table-wrap"><table>
+          <div className="table-wrap"><table className="report-table">
             <thead><tr><th>File</th><th>Detected as</th><th className="num">Rows</th><th className="num">Kept</th><th className="num">Skipped</th><th>Covers</th></tr></thead>
             <tbody>{pending.result.files.map(f => (
               <tr key={f.file}><th className="break">{f.file.split('/').pop()}</th><td><span className="kind">{KIND_LABEL[f.kind]}</span></td><td className="num">{fmtN(f.rows)}</td><td className="num">{fmtN(f.kept)}</td><td className="num">{fmtN(f.skipped)}</td><td>{f.from ? `${fmtDate(f.from)} to ${fmtDate(f.to!)}` : '—'}</td></tr>

@@ -1,0 +1,32 @@
+﻿[
+  {
+    "endTime" : "2024-07-22 09:03",
+    "artistName" : "The Fernway",
+    "trackName" : "Lighthouse Hours",
+    "msPlayed" : 214500
+  },
+  {
+    "endTime" : "2024-07-22 09:03",
+    "artistName" : "Mira Solberg",
+    "trackName" : "Paper Crowns",
+    "msPlayed" : 6311
+  },
+  {
+    "endTime" : "2024-07-25 22:11",
+    "artistName" : "The Fernway",
+    "trackName" : "Lighthouse Hours",
+    "msPlayed" : 245100
+  },
+  {
+    "endTime" : "2024-07-26 07:12",
+    "artistName" : "Mira Solberg",
+    "trackName" : "Small Rooms",
+    "msPlayed" : 187310
+  },
+  {
+    "endTime" : "2024-07-26 07:13",
+    "artistName" : "Mira Solberg",
+    "trackName" : "Small Rooms",
+    "msPlayed" : 0
+  }
+]

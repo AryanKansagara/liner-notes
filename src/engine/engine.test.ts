@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { detectKind, isHistoryName, mergeStreams, parseFile, parseMany, parseTs } from './parse.ts'
+import { readFileSync } from 'node:fs'
+import { detectKind, isHistoryName, mergeStreams, offlineEnd, parseFile, parseJson, parseMany, parseTs } from './parse.ts'
 import {
   addMonths, applyRules, buildCtx, clock, compareSnapshots, discovery, eras, firstListens, isSkip, longestRun, lostFavourites, monthsBetween,
   peakHour, prepare, ruleMatches, sessions, skipStats, sliceCtx, snapshot, streaks, suggestRules, top, toCsv, trackIndex, tzOffset, uriList, yearInReview,
@@ -62,6 +63,66 @@ test('overlapping basic and extended files de-duplicate and keep the row with a 
   assert.equal(merged[0].uri, 'spotify:track:abc')
   const again = parseMany([{ name: 'a.json', rows: [{ endTime: '2024-05-02 08:03', artistName: 'Band', trackName: 'Song', msPlayed: 200000 }] }, { name: 'b.json', rows: [{ endTime: '2024-05-02 08:03', artistName: 'Band', trackName: 'Song', msPlayed: 200000 }] }])
   assert.equal(again.streams.length, 1, 're-importing the same request does not double count')
+})
+
+// ---------- Real export layouts (fixtures/) ----------
+// The fixtures copy the exact field names, key order, nulls and formatting of real exports: the 2024 extended layout
+// (username, ip_addr_decrypted), the 2025 layout (ip_addr, audiobook_* fields), and the basic Account data files
+// (pretty-printed with " : ", saved here with a byte-order mark). The first extended row is verbatim from a public
+// Spotify Community post; track, artist and show names elsewhere are invented.
+
+const fixture = (name: string) => ({ name: `my_spotify_data/${name}`, rows: parseJson(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')) })
+const FIX = ['Streaming_History_Audio_2024_0.json', 'Streaming_History_Audio_2025_1.json', 'StreamingHistory_music_0.json', 'StreamingHistory_podcast_0.json'].map(fixture)
+
+test('real export layouts: every file is detected and every row accounted for', () => {
+  const r = parseMany(FIX)
+  assert.deepEqual(r.files.map(f => [f.kind, f.rows, f.kept, f.skipped]), [['extended-audio', 6, 5, 1], ['extended-audio', 2, 2, 0], ['basic-music', 5, 5, 0], ['basic-podcast', 1, 1, 0]])
+  assert.deepEqual(r.groups, [{ msg: 'No track, episode or audiobook metadata (often a local file or removed content)', level: 'warn', count: 1 }])
+  assert.equal(r.streams.length, 9, 'basic rows that repeat extended rows are merged')
+  assert.ok(r.streams.every(s => !('ip_addr' in s) && !('username' in s)))
+})
+
+test('real export layouts: audiobooks, episodes and private sessions map to the right kinds', () => {
+  const r = parseMany(FIX)
+  const book = r.streams.find(s => s.kind === 'audiobook')!
+  assert.deepEqual([book.track, book.artist, book.uri], ['Chapter 4', 'The Salt Road', 'spotify:episode:5cHu1Lw7NqP3sXz0Yb2KdM'])
+  const ep = r.streams.filter(s => s.kind === 'episode')
+  assert.equal(ep.length, 1)
+  assert.equal(ep[0].uri, 'spotify:episode:0aLp9rT2xVqk3Wn8YcB5Fd', 'the extended row wins over the basic podcast row')
+  assert.equal(ep[0].skipped, undefined, 'skipped: null stays unknown')
+  assert.equal(r.streams.filter(s => s.incognito).length, 1)
+})
+
+test('basic endTime cut to the minute still matches the extended row one minute earlier', () => {
+  const r = parseMany(FIX)
+  const lh = r.streams.filter(s => s.track === 'Lighthouse Hours')
+  assert.equal(lh.length, 2)
+  assert.ok(lh.every(s => s.uri.startsWith('spotify:track:')))
+})
+
+test('a short song on repeat is not collapsed by de-duplication', () => {
+  const row = (ts: string) => ({ ts, ms_played: 45000, master_metadata_track_name: 'Wiggle', master_metadata_album_artist_name: 'Kids', spotify_track_uri: 'spotify:track:w' })
+  assert.equal(parseMany([{ name: 'Streaming_History_Audio_2024.json', rows: [row('2024-05-01T08:00:50Z'), row('2024-05-01T08:01:35Z'), row('2024-05-01T08:02:20Z')] }]).streams.length, 3)
+})
+
+test('offline plays use offline_timestamp when ts is a later sync time', () => {
+  const r = parseMany(FIX)
+  const u = r.streams.find(s => s.track === 'Underpass')!
+  assert.equal(u.ts, 1721719800_000 + 198000, 'played 23 Jul 07:30 UTC, synced 24 Jul')
+  const ts = Date.UTC(2024, 6, 24, 18), ms = 200_000
+  assert.equal(offlineEnd(ts, ms, false, 1721719800), ts, 'only offline rows are moved')
+  assert.equal(offlineEnd(ts, ms, true, 0), ts, 'zero means unknown')
+  assert.equal(offlineEnd(ts, ms, true, ts - ms - 2000), ts, 'a few seconds apart: keep ts')
+  assert.equal(offlineEnd(ts, ms, true, Date.UTC(2024, 6, 23)), Date.UTC(2024, 6, 23) + ms, 'millisecond values from older exports')
+  assert.equal(offlineEnd(ts, ms, true, (ts + 3_600_000) / 1000), ts, 'a start after ts is implausible')
+})
+
+test('zip entries: macOS resource forks are ignored, old endsong and endvideo files are read', () => {
+  assert.ok(!isHistoryName('__MACOSX/Spotify Extended Streaming History/._Streaming_History_Audio_2019_0.json'))
+  assert.ok(!isHistoryName('Spotify Extended Streaming History/._Streaming_History_Audio_2019_0.json'))
+  assert.ok(isHistoryName('MyData/endsong_3.json'))
+  assert.ok(isHistoryName('MyData/endvideo.json'))
+  assert.equal(detectKind('MyData/endvideo.json', [{ ts: '2022-01-01T00:00:00Z', ms_played: 1 }]), 'extended-video')
 })
 
 // ---------- Time ----------

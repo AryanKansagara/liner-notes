@@ -15,7 +15,10 @@ export interface FileReport {
   to?: number
 }
 
-export interface ParseResult { streams: Stream[]; files: FileReport[]; issues: Issue[]; issueCount: number }
+/** Issue messages with their total count, so 7,000 identical warnings read as one line. */
+export interface IssueGroup { msg: string; level: Issue['level']; count: number }
+
+export interface ParseResult { streams: Stream[]; files: FileReport[]; issues: Issue[]; issueCount: number; groups: IssueGroup[] }
 
 export const KIND_LABEL: Record<FileKind, string> = {
   'extended-audio': 'Extended history (audio)',
@@ -38,7 +41,14 @@ export function detectKind(name: string, rows: unknown): FileKind {
 }
 
 /** Is this file name one of the history files we want out of a zip? */
-export const isHistoryName = (name: string) => /(Streaming_History_(Audio|Video)|StreamingHistory_?(music|podcast)?)[^/]*\.json$/i.test(name) || /endsong[^/]*\.json$/i.test(name)
+export const isHistoryName = (name: string) => {
+  // Skip macOS resource forks that appear when a folder is re-zipped on a Mac.
+  if (/(^|\/)__MACOSX\//.test(name) || /(^|\/)\._[^/]*$/.test(name)) return false
+  return /(Streaming_History_(Audio|Video)|StreamingHistory_?(music|podcast)?)[^/]*\.json$/i.test(name) || /(endsong|endvideo)[^/]*\.json$/i.test(name)
+}
+
+/** JSON.parse that tolerates the byte-order mark some editors add when a file is re-saved. */
+export const parseJson = (text: string): unknown => JSON.parse(text.replace(/^\uFEFF/, ''))
 
 const str = (v: unknown) => typeof v === 'string' ? v.trim() : ''
 const bool = (v: unknown) => v === true || v === 'true' ? true : v === false || v === 'false' ? false : undefined
@@ -51,14 +61,33 @@ export function parseTs(v: unknown): number {
   return Date.parse(s)
 }
 
-export function parseFile(name: string, rows: unknown): { kind: FileKind; streams: Stream[]; report: FileReport; issues: Issue[]; issueCount: number } {
+/**
+ * For offline plays `ts` is when the play reached Spotify's servers, which can be hours or days after the music
+ * stopped; `offline_timestamp` (seconds in recent exports, milliseconds in some older ones) holds the real start.
+ * Returns the corrected end time, or `ts` when the field is missing, zero or implausible.
+ */
+export function offlineEnd(ts: number, ms: number, offline: unknown, ots: unknown): number {
+  if (offline !== true || typeof ots !== 'number' || !(ots > 0)) return ts
+  const start = ots < 1e11 ? ots * 1000 : ots
+  if (start < Date.UTC(2008, 0, 1) || start + ms > ts) return ts
+  return ts - (start + ms) > 5 * 60_000 ? start + ms : ts
+}
+
+export function parseFile(name: string, rows: unknown): { kind: FileKind; streams: Stream[]; report: FileReport; issues: Issue[]; issueCount: number; groups: Map<string, IssueGroup> } {
   const kind = detectKind(name, rows)
   const issues: Issue[] = []
   let issueCount = 0
-  const push = (row: number, level: Issue['level'], msg: string) => { issueCount++; if (issues.length < MAX_ISSUES) issues.push({ file: name, row, level, msg }) }
+  const groups = new Map<string, IssueGroup>()
+  const push = (row: number, level: Issue['level'], msg: string) => {
+    issueCount++
+    if (issues.length < MAX_ISSUES) issues.push({ file: name, row, level, msg })
+    const g = msg.replace(/ ".*"$/, '')
+    const cur = groups.get(g)
+    if (cur) cur.count++; else groups.set(g, { msg: g, level, count: 1 })
+  }
   const streams: Stream[] = []
   const list = Array.isArray(rows) ? rows : []
-  if (kind === 'ignored') return { kind, streams, report: { file: name, kind, rows: list.length, kept: 0, skipped: 0 }, issues, issueCount }
+  if (kind === 'ignored') return { kind, streams, report: { file: name, kind, rows: list.length, kept: 0, skipped: 0 }, issues, issueCount, groups }
 
   let skipped = 0, from = Infinity, to = -Infinity
   list.forEach((raw, i) => {
@@ -67,10 +96,11 @@ export function parseFile(name: string, rows: unknown): { kind: FileKind; stream
     const r = raw as Record<string, unknown>
     let s: Stream | null = null
     if (kind === 'extended-audio' || kind === 'extended-video') {
-      const ts = parseTs(r.ts)
       const ms = Number(r.ms_played)
+      let ts = parseTs(r.ts)
       if (!Number.isFinite(ts)) { skipped++; push(row, 'error', `Unreadable ts "${String(r.ts)}"`); return }
       if (!Number.isFinite(ms) || ms < 0) { skipped++; push(row, 'error', 'ms_played is missing or negative'); return }
+      ts = offlineEnd(ts, ms, r.offline, r.offline_timestamp)
       const trackName = str(r.master_metadata_track_name), ep = str(r.episode_name), book = str(r.audiobook_chapter_title) || str(r.audiobook_title)
       let k: Kind, track: string, artist: string, album: string, uri: string
       if (trackName) { k = kind === 'extended-video' ? 'video' : 'track'; track = trackName; artist = str(r.master_metadata_album_artist_name) || 'Unknown artist'; album = str(r.master_metadata_album_album_name); uri = str(r.spotify_track_uri) }
@@ -110,17 +140,24 @@ export function parseFile(name: string, rows: unknown): { kind: FileKind; stream
     if (s.ts > to) to = s.ts
   })
   const report: FileReport = { file: name, kind, rows: list.length, kept: streams.length, skipped, ...(streams.length ? { from, to } : {}) }
-  return { kind, streams, report, issues, issueCount }
+  return { kind, streams, report, issues, issueCount, groups }
 }
 
 /** Identity used to drop duplicates when files overlap (basic + extended, or a re-import of the same request). */
 export const dedupKey = (s: Stream) => `${Math.floor(s.ts / 60000)}|${s.ms}|${s.track}`
 
-/** Merges stream lists, preferring rows with more detail (URIs) when the same play appears twice. Sorted by ts. */
+/**
+ * Merges stream lists, preferring rows with more detail (URIs) when the same play appears twice. Sorted by ts.
+ * The basic export cuts endTime to the minute, so a basic row (no URI) also matches an extended row (with URI)
+ * in the neighbouring minute. Two rows of the same kind only match in the same minute, so a short song on
+ * repeat is not collapsed.
+ */
 export function mergeStreams(...lists: Stream[][]): Stream[] {
   const map = new Map<string, Stream>()
   for (const list of lists) for (const s of list) {
-    const k = dedupKey(s)
+    const m = Math.floor(s.ts / 60000), rest = `|${s.ms}|${s.track}`
+    let k = m + rest
+    if (!map.has(k)) for (const n of [m - 1, m + 1]) { const prev = map.get(n + rest); if (prev && !prev.uri !== !s.uri) { k = n + rest; break } }
     const prev = map.get(k)
     if (!prev || (!prev.uri && s.uri)) map.set(k, s)
   }
@@ -132,13 +169,15 @@ export function parseMany(files: { name: string; rows: unknown }[]): ParseResult
   const reports: FileReport[] = []
   const issues: Issue[] = []
   let issueCount = 0
+  const groups = new Map<string, IssueGroup>()
   for (const f of files) {
     const r = parseFile(f.name, f.rows)
     reports.push(r.report)
     all.push(r.streams)
     issueCount += r.issueCount
     for (const i of r.issues) if (issues.length < MAX_ISSUES) issues.push(i)
+    for (const [msg, g] of r.groups) { const cur = groups.get(msg); if (cur) cur.count += g.count; else groups.set(msg, { ...g }) }
   }
   const streams = mergeStreams(...all)
-  return { streams, files: reports, issues, issueCount }
+  return { streams, files: reports, issues, issueCount, groups: [...groups.values()].sort((a, b) => b.count - a.count) }
 }

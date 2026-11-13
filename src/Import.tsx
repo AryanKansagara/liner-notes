@@ -88,6 +88,8 @@ export default function Import({ project, ds, update }: { project: Project; ds: 
           {pending.result.issueCount > 0 && (
             <>
               <h3>{fmtN(pending.result.issueCount)} row{pending.result.issueCount > 1 ? 's' : ''} skipped</h3>
+              {pending.result.groups.length > 1 || (pending.result.groups[0]?.count ?? 0) > 1 ? <ul className="small">{pending.result.groups.map(g => <li key={g.msg} className={g.level === 'error' ? 'error-row' : ''}><b>{fmtN(g.count)}</b> × {g.msg}</li>)}</ul> : null}
+              {pending.result.groups.some(g => g.msg.startsWith('No track')) && <p className="muted small">Rows without metadata still have play time but no title. Spotify leaves these blank in the export, for example for local files and tracks no longer in the catalogue, so they cannot be named or counted.</p>}
               <div className="issues">{pending.result.issues.map((i, k) => <div key={k} className={i.level === 'error' ? 'error-row' : ''}><span className="ln">{i.file.split('/').pop()}:{i.row}</span><span>{i.msg}</span></div>)}</div>
               {pending.result.issueCount > pending.result.issues.length && <p className="muted small">Showing the first {pending.result.issues.length}.</p>}
             </>

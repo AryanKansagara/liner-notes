@@ -1,6 +1,6 @@
 // Parses dropped files off the main thread: zips are unpacked with fflate, JSON parsed, rows normalised.
 import { unzipSync } from 'fflate'
-import { isHistoryName, parseMany } from './engine/parse.ts'
+import { isHistoryName, parseJson, parseMany } from './engine/parse.ts'
 
 export type WorkerIn = { files: File[] }
 export type WorkerOut =
@@ -29,7 +29,7 @@ onmessage = async (e: MessageEvent<WorkerIn>) => {
     const parsed: { name: string; rows: unknown }[] = []
     for (let i = 0; i < inputs.length; i++) {
       post({ type: 'progress', message: `Parsing ${inputs[i].name.split('/').pop()}`, pct: 40 + (i / Math.max(1, inputs.length)) * 50 })
-      try { parsed.push({ name: inputs[i].name, rows: JSON.parse(inputs[i].text) }) } catch { ignored.push(`${inputs[i].name} (not valid JSON)`) }
+      try { parsed.push({ name: inputs[i].name, rows: parseJson(inputs[i].text) }) } catch { ignored.push(`${inputs[i].name} (not valid JSON)`) }
     }
     post({ type: 'progress', message: 'Merging and de-duplicating', pct: 92 })
     const result = parseMany(parsed)

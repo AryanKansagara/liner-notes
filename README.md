@@ -10,7 +10,7 @@ Wrapped is a once-a-year summary you can't correct. Sleep sounds, white noise, k
 
 ## Features
 
-- **Import** the `my_spotify_data.zip` or the JSON inside: extended audio/video history and the basic Account data. Parsed in a Web Worker, merged, de-duplicated, with a validation report listing every skipped row by file and row number.
+- **Import** the `my_spotify_data.zip` or the JSON inside: extended audio/video history and the basic Account data. Parsed in a Web Worker, merged, de-duplicated, with a validation report that groups skipped rows by reason. Handles the 2024 and 2025 extended layouts (audiobook fields), old `endsong_*.json` requests, basic files with minute-cut times or a byte-order mark, re-zipped folders with `__MACOSX` entries, and offline plays whose `ts` is a late sync time (`offline_timestamp` is used instead). Test fixtures copy the real file layouts.
 - **Fix my Wrapped**: exclusion rules by artist, track, keyword (sleep, rain, kids...), date range, private sessions or podcasts. Suggested rules detect noise and night-time loops. Everything recomputes instantly.
 - **Engine** (tested): sessions, a configurable play threshold (30 s default), top tracks/artists/albums/podcasts for any date range by minutes or plays, skip rate and songs you always skip, first listens and peak months, lost favourites, a local-time listening clock with a timezone setting, streaks, discovery rate, era detection, and a year in review for any 12 months.
 - **Actions**: 9:16 and square story cards rendered to PNG, rediscovery lists of `spotify:track:` URIs to paste into a desktop playlist, CSV exports, and a printable liner-notes booklet.

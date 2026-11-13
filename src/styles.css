@@ -497,7 +497,7 @@ tbody tr:hover { background: var(--accent-subtle); }
 .hour-bars::before { content: ''; }
 .hour-bars i { background: var(--brand); border-radius: 2px 2px 0 0; opacity: .7; }
 
-.eras { display: grid; gap: 16px; }
+.eras { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .era-bar { display: flex; gap: 3px; height: 46px; }
 .era-bar button { border: 0; min-width: 6px; flex-basis: 0; border-radius: 6px; cursor: pointer; background: linear-gradient(135deg, hsl(var(--h) 60% 48%), hsl(calc(var(--h) + 30) 55% 32%)); color: #fff; font: 700 13px var(--font-sans); padding: 0 10px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; transition: transform .2s var(--ease), filter .2s; }
 .era-bar button:hover { transform: translateY(-2px); filter: brightness(1.1); }

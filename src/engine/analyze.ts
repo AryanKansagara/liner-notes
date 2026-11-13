@@ -404,8 +404,16 @@ export function eras(ctx: Ctx, threshold = 0.45, minMonthMin = 60): Era[] {
     if (!mm) months.set(m, mm = new Map())
     mm.set(s.artist, (mm.get(s.artist) ?? 0) + s.ms)
   }
-  const keys = [...months.keys()].sort()
-  type Seg = { months: string[]; agg: Map<string, number> }
+  // Months more than 3 apart (a break in the data, or basic exports from different years) never share an era.
+  const all = [...months.keys()].sort()
+  const runs: string[][] = []
+  for (const m of all) { const run = runs.at(-1); if (run && monthsBetween(run.at(-1)!, m).length <= 4) run.push(m); else runs.push([m]) }
+  return runs.flatMap(keys => erasOfRun(keys, months, threshold, minMonthMin))
+}
+
+type Seg = { months: string[]; agg: Map<string, number> }
+
+function erasOfRun(keys: string[], months: Map<string, Map<string, number>>, threshold: number, minMonthMin: number): Era[] {
   const segs: Seg[] = []
   for (const m of keys) {
     const mm = months.get(m)!

@@ -318,6 +318,15 @@ test('era detection splits months dominated by different artists and folds one-m
   assert.equal(e[0].months + e[1].months, 8)
 })
 
+test('a long break in the data ends an era, even with the same artists', () => {
+  const list: Stream[] = []
+  const month = (m: string, artist: string) => { for (let i = 0; i < 30; i++) list.push(st(`${m}-${String(1 + (i % 27)).padStart(2, '0')}T12:00:00Z`, 3 * MIN, artist, `t${i % 5}`)) }
+  for (const m of ['2021-01', '2021-02', '2021-03']) month(m, 'The Jam')
+  for (const m of ['2024-06', '2024-07']) month(m, 'The Jam')
+  const e = eras(ctxOf(list))
+  assert.deepEqual(e.map(x => [x.from, x.to, x.months]), [['2021-01', '2021-03', 3], ['2024-06', '2024-07', 2]])
+})
+
 test('the five-year sample shows distinct eras and lost favourites', () => {
   const def = SAMPLES.find(s => s.id === 'ines')!
   const { ctx } = prepare(generate(def), { ...S, tz: def.tz })

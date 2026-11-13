@@ -99,10 +99,21 @@ export function generate(def: SampleDef): Stream[] {
   const nDays = Math.round((end - start) / 86_400_000)
   const lastFor = new Map<Artist, Track>()
 
-  const play = (wall: number, t: Track, o: { skip?: boolean; rs?: string; shuffle?: boolean; country: string; platform: string; incognito?: boolean; offline?: boolean }) => {
-    const ms = o.skip ? Math.round(1_500 + r() * 38_000) : Math.round(t.dur - (r() < 0.05 ? r() * 60_000 : 0))
+  // How busy each month is. Real histories are lumpy: a slow random walk (new job, new phone, a breakup album),
+  // a dip in August holidays and a rise in December.
+  const nMonths = Math.round((end - start) / (30.44 * 86_400_000)) + 1
+  const busy: number[] = []
+  for (let m = 0, lvl = 1; m < nMonths; m++) {
+    lvl = Math.min(1.35, Math.max(0.55, lvl + (r() - 0.5) * 0.3))
+    const cal = new Date(ymStart(addMonths(def.from, m))).getUTCMonth()
+    busy.push(lvl * (cal === 7 ? 0.75 : cal === 11 ? 1.15 : 1))
+  }
+
+  const play = (wall: number, t: Track, o: { skip?: boolean; rs?: string; re?: string; shuffle?: boolean; country: string; platform: string; incognito?: boolean; offline?: boolean }) => {
+    // Skips are mostly instant (flicking through shuffle); some get a verse in. Sessions sometimes stop mid-track.
+    const ms = o.skip ? Math.round(r() < 0.45 ? r() * 2_500 : 2_500 + r() * 30_000) : o.re && o.re !== 'trackdone' ? Math.round(r() * t.dur) : Math.round(t.dur - (r() < 0.05 ? r() * 60_000 : 0))
     const st = toUtc(wall, def.tz)
-    out.push({ ts: st + ms, ms, track: t.name, artist: t.artist, album: t.album, uri: t.uri, kind: 'track', rs: o.rs ?? 'trackdone', re: o.skip ? 'fwdbtn' : 'trackdone', shuffle: !!o.shuffle, skipped: !!o.skip, ...(o.offline ? { offline: true } : {}), ...(o.incognito ? { incognito: true } : {}), country: o.country, platform: o.platform })
+    out.push({ ts: st + ms, ms, track: t.name, artist: t.artist, album: t.album, uri: t.uri, kind: 'track', rs: o.rs ?? 'trackdone', re: o.skip ? 'fwdbtn' : o.re ?? 'trackdone', shuffle: !!o.shuffle, skipped: !!o.skip, ...(o.offline ? { offline: true } : {}), ...(o.incognito ? { incognito: true } : {}), country: o.country, platform: o.platform })
     return ms
   }
 
@@ -112,11 +123,12 @@ export function generate(def: SampleDef): Stream[] {
     const dow = (new Date(day).getUTCDay() + 6) % 7
     const weekend = dow >= 5
     const country = countries[Math.floor(r() * countries.length)]
-    // Quiet days and a long streak in the Ines sample.
-    if (!theo && !(p > 0.62 && p < 0.66) && r() < 0.12) continue
-    if (theo && r() < 0.07) continue
+    const level = busy[Math.min(busy.length - 1, Math.floor(d / 30.44))]
+    // Quiet days (more of them in slow months) and a long streak in the Ines sample.
+    if (!theo && !(p > 0.62 && p < 0.66) && r() < 0.12 / level) continue
+    if (theo && r() < 0.07 / level) continue
     const groupsNow = mix(p)
-    const nSessions = 1 + Math.floor(r() * (weekend ? 4 : 3.2))
+    const nSessions = 1 + Math.floor(r() * (weekend ? 4 : 3.2) * level)
     for (let k = 0; k < nSessions; k++) {
       const h = pick(r, hours, x => (weekend ? weekendHours : weekdayHours)[x])
       let wall = day + h * 3_600_000 + Math.floor(r() * 3_600_000)
@@ -135,7 +147,9 @@ export function generate(def: SampleDef): Stream[] {
         const t = pick(r, artist.tracks, (x, i) => (1 / (i + 1) ** 1.1) * (lastFor.get(artist) === x ? 0.1 : 1))
         lastFor.set(artist, t)
         const skip = r() < t.skippy + (shuffle ? 0.08 : 0)
-        wall += play(wall, t, { skip, shuffle, rs: j === 0 ? 'clickrow' : skip ? 'fwdbtn' : 'trackdone', country, platform, incognito, offline }) + 1_000
+        const last = j === n - 1
+        const re = !skip && last && r() < 0.35 ? (['endplay', 'endplay', 'logout', 'unexpected-exit-while-paused'] as const)[Math.floor(r() * 4)] : undefined
+        wall += play(wall, t, { skip, re, shuffle, rs: j === 0 ? (r() < 0.2 ? 'appload' : 'clickrow') : skip ? 'fwdbtn' : 'trackdone', country, platform, incognito, offline }) + 1_000
       }
     }
     if (theo) {

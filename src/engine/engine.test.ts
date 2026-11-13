@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { detectKind, isHistoryName, mergeStreams, offlineEnd, parseFile, parseJson, parseMany, parseTs } from './parse.ts'
 import {
   addMonths, applyRules, buildCtx, clock, compareSnapshots, discovery, eras, firstListens, isSkip, longestRun, lostFavourites, monthsBetween,
-  peakHour, prepare, ruleMatches, sessions, skipStats, sliceCtx, snapshot, streaks, suggestRules, top, toCsv, trackIndex, tzOffset, uriList, yearInReview,
+  peakHour, prepare, sessionStats, totals, ruleMatches, sessions, skipStats, sliceCtx, snapshot, streaks, suggestRules, top, toCsv, trackIndex, tzOffset, uriList, yearInReview,
 } from './analyze.ts'
 import { SAMPLES, generate, sampleRules } from './sample.ts'
 import type { Rule, Settings, Stream } from './types.ts'
@@ -250,6 +250,18 @@ test('sessions split on gaps longer than the setting', () => {
   assert.equal(sessions(ctxOf(list)).length, 2)
   assert.equal(sessions(ctxOf(list, { sessionGapMin: 60 })).length, 1)
   assert.equal(sessions(ctxOf(list))[0].n, 2)
+})
+
+test('session median is the middle value, or the mean of the two middle values', () => {
+  const mk = (mins: number[]) => mins.map((m, i) => ({ start: i * 1e7, end: i * 1e7 + m * MIN, ms: m * MIN, n: 1 }))
+  assert.equal(sessionStats(mk([10, 30, 20])).medianMin, 20)
+  assert.equal(sessionStats(mk([10, 40, 20, 30])).medianMin, 25)
+})
+
+test('active days count only days with a music play, not podcast-only or 0 ms days', () => {
+  const list = [st('2024-01-01T10:00:00Z', 3 * MIN, 'A', '1'), st('2024-01-02T10:00:00Z', 0, 'A', '1'), { ...st('2024-01-03T10:00:00Z', 30 * MIN, 'Show', 'Ep'), kind: 'episode' as const }]
+  const t = totals(ctxOf(list))
+  assert.deepEqual([t.activeDays, t.plays, t.streams], [1, 1, 3])
 })
 
 test('streaks count consecutive local days, including the longest single-artist run', () => {

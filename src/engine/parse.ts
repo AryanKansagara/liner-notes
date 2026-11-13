@@ -143,9 +143,6 @@ export function parseFile(name: string, rows: unknown): { kind: FileKind; stream
   return { kind, streams, report, issues, issueCount, groups }
 }
 
-/** Identity used to drop duplicates when files overlap (basic + extended, or a re-import of the same request). */
-export const dedupKey = (s: Stream) => `${Math.floor(s.ts / 60000)}|${s.ms}|${s.track}`
-
 /**
  * Merges stream lists, preferring rows with more detail (URIs) when the same play appears twice. Sorted by ts.
  * The basic export cuts endTime to the minute, so a basic row (no URI) also matches an extended row (with URI)

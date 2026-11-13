@@ -148,9 +148,9 @@ export function totals(ctx: Ctx): Totals {
   for (let i = 0; i < ctx.s.length; i++) {
     const s = ctx.s[i]
     ms += s.ms
-    if (isMusic(s)) { musicMs += s.ms; if (isPlay(s, ctx.minMs)) { plays++; tracks.add(trackKey(s)); artists.add(s.artist) } }
+    // activeDays: days with at least one music play, so 0 ms rows and podcast-only days do not count
+    if (isMusic(s)) { musicMs += s.ms; if (isPlay(s, ctx.minMs)) { plays++; tracks.add(trackKey(s)); artists.add(s.artist); days.add(dayOf(ctx.loc[i])) } }
     else if (isTalk(s)) talkMs += s.ms
-    days.add(dayOf(ctx.loc[i]))
   }
   return { streams: ctx.s.length, plays, ms, musicMs, talkMs, tracks: tracks.size, artists: artists.size, activeDays: days.size, from: ctx.s[0]?.ts ?? 0, to: ctx.s.at(-1)?.ts ?? 0 }
 }
@@ -307,7 +307,7 @@ export function sessionStats(list: Session[]) {
   if (!list.length) return { count: 0, avgMin: 0, medianMin: 0, longest: null as Session | null }
   const mins = list.map(s => (s.end - s.start) / 60_000).sort((a, b) => a - b)
   const longest = list.reduce((a, b) => (b.end - b.start > a.end - a.start ? b : a))
-  return { count: list.length, avgMin: mins.reduce((a, b) => a + b, 0) / mins.length, medianMin: mins[Math.floor(mins.length / 2)], longest }
+  return { count: list.length, avgMin: mins.reduce((a, b) => a + b, 0) / mins.length, medianMin: mins.length % 2 ? mins[(mins.length - 1) / 2] : (mins[mins.length / 2 - 1] + mins[mins.length / 2]) / 2, longest }
 }
 
 // ---------- Streaks ----------

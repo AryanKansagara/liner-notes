@@ -77,7 +77,7 @@ export default function Booklet({ id }: { id: string }) {
         {disc.length > 0 && <><h2>Discovered this year</h2><p className="bk-flow">{disc.join(' · ')}</p></>}
         {r.topAlbums.length > 0 && <><h2>Albums on repeat</h2><ul className="bk-credits">{r.topAlbums.map(a => <li key={a.key}><b>{a.name}</b> <span>{a.sub} · {fmtN(a.ms / 60_000)} min</span></li>)}</ul></>}
         {lost.length > 0 && <><h2>Lost favourites</h2><ul className="bk-credits">{lost.map(t => <li key={t.key}><b>{t.name}</b> <span>{t.artist} · {t.plays} plays, peak {fmtYm(t.peakMonth, true)}</span></li>)}</ul></>}
-        <p className="bk-colophon">Compiled from Spotify Extended Streaming History with Liner Notes. A play is {project.settings.minPlaySec} seconds or more. {project.settings.rules.filter(x => x.on).length ? `${project.settings.rules.filter(x => x.on).length} exclusion rule(s) applied.` : 'No exclusions applied.'} Independent project, not affiliated with Spotify.</p>
+        <p className="bk-colophon">Compiled from Spotify Extended Streaming History with Liner Notes. A play is {project.settings.minPlaySec} seconds or more. {project.settings.rules.filter(x => x.on).length ? `${project.settings.rules.filter(x => x.on).length} exclusion rule(s) applied.` : 'No exclusions applied.'}</p>
       </section>
     </div>
   )

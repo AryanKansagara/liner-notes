@@ -28,4 +28,4 @@ npm test               # engine tests
 npm run build
 ```
 
-Built with Vite, React 19 and TypeScript. Independent project, not affiliated with Spotify.
+Built with Vite, React 19 and TypeScript.

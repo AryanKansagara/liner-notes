@@ -288,7 +288,7 @@ export function Footer() {
       <div className="footer-inner">
         <div className="footer-brand"><Monogram /> <strong>Liner Notes</strong></div>
         <nav className="footer-nav" aria-label="Footer"><Link href="/app">Listeners</Link><Link href="/docs">Docs</Link><Link href="/settings">Settings</Link></nav>
-        <p>Built by Aryan Kansagara. Independent project, not affiliated with Spotify.</p>
+        <p>Built by Aryan Kansagara.</p>
         <p className="muted small">Sample listeners, artists and tracks are synthetic. Your streaming history is parsed in your browser and stays on this device; only derived summaries and settings sync if you sign in.</p>
       </div>
     </footer>

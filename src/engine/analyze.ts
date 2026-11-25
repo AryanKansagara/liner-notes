@@ -599,7 +599,8 @@ export function compareSnapshots(a: Snapshot, b: Snapshot) {
 
 // ---------- Exports ----------
 
-const cell = (v: unknown) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+/** Names come from whoever uploaded the music: a leading quote keeps spreadsheets from running text that looks like a formula. */
+const cell = (v: unknown) => { const s = v == null ? '' : typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${v}` : String(v); return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
 export const toCsv = (header: string[], rows: unknown[][]) => [header, ...rows].map(r => r.map(cell).join(',')).join('\n') + '\n'
 
 /** spotify:track:... lines; paste them into a Spotify desktop playlist. Rows without a URI (basic export) are skipped. */

@@ -26,6 +26,7 @@ cp .env.example .env   # optional: public Supabase URL + publishable key for syn
 npm run dev
 npm test               # engine tests
 npm run build
+npm run test:e2e       # Playwright on the production build (npx playwright install chromium once; E2E_PORT picks the port)
 ```
 
 Built with Vite, React 19 and TypeScript.

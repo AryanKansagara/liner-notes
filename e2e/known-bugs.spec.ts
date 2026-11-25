@@ -264,15 +264,34 @@ test('#11 dates: last_played in the lost-favourites CSV is the local day', async
 })
 
 test('#12 empty: with everything excluded no section shows a busiest hour', async ({ page }) => {
-  test.fail()
-  await newListener(page)
+  const path = await newListener(page)
   await importFiles(page, 1, { name: AUDIO, data: HAND.slice(0, 1) })
   await section(page, 'Top lists')
   await page.getByRole('button', { name: 'Exclude' }).click()
-  await section(page, 'Habits')
-  await expect(page.getByText('Every stream is excluded')).toBeVisible({ timeout: 5000 })
+  const message = page.getByText('Every stream is excluded'), link = page.getByRole('link', { name: 'Review the rules' })
+  for (const name of ['Overview', 'Top lists', 'Habits', 'Rediscover', 'Year in review'] as const) {
+    await section(page, name)
+    await expect(message, name).toBeVisible({ timeout: 5000 })
+    await expect(link).toHaveAttribute('href', `${path}/fix`)
+  }
+  for (const [name, heading] of [['Fix my Wrapped', 'Exclusion rules'], ['History', 'Snapshots'], ['Data', 'Imports']] as const) {
+    await section(page, name)
+    await expect(panel(page, heading)).toBeVisible()
+    await expect(message, name).toHaveCount(0)
+  }
+  await page.goto(`${path}/booklet`)
+  await expect(message).toBeVisible()
+  await link.click()
+  await page.locator('.rules .switch').click()
   await section(page, 'Year in review')
-  await expect(page.getByText('Every stream is excluded')).toBeVisible({ timeout: 5000 })
+  await expect(kpi(page, 'Top artist')).toContainText('Ada')
+})
+
+test('#12 empty: a listener without data has nothing to print, and no rules are blamed', async ({ page }) => {
+  const path = await newListener(page)
+  await page.goto(`${path}/booklet`)
+  await expect(page.getByText('Nothing to print yet')).toBeVisible()
+  await expect(page.getByText('Every stream is excluded')).toHaveCount(0)
 })
 
 test('#13 label: the plays tile names the threshold in force', async ({ page }) => {

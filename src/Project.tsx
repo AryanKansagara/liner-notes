@@ -3,7 +3,7 @@ import { startLoc } from './engine/analyze.ts'
 import type { Settings, Stream } from './engine/types.ts'
 import { usePrepared, useProject, type Prepared } from './projectData.ts'
 import type { Project } from './store.ts'
-import { Empty, fmtDate, fmtN, go, isTyping, Link, Modal, SyntheticBadge } from './ui.tsx'
+import { AllExcluded, Empty, fmtDate, fmtN, go, isTyping, Link, Modal, SyntheticBadge } from './ui.tsx'
 
 const Tabs = lazy(() => import('./Tabs.tsx'))
 const Fix = lazy(() => import('./Fix.tsx'))
@@ -83,8 +83,9 @@ export default function ProjectView({ id, tab: rawTab }: { id: string; tab: stri
           : tab === 'history' ? <History project={project} update={update} prep={prep} />
             : prep && ds && (
               tab === 'fix' ? <Fix project={project} ds={ds} prep={prep} setSettings={setSettings} update={update} />
-                : tab === 'review' ? <Review project={project} ds={ds} prep={prep} setSettings={setSettings} update={update} />
-                  : <Tabs tab={tab} project={project} ds={ds} prep={prep} setSettings={setSettings} update={update} />
+                : !prep.ctx.s.length ? <AllExcluded id={id} />
+                  : tab === 'review' ? <Review project={project} ds={ds} prep={prep} setSettings={setSettings} update={update} />
+                    : <Tabs tab={tab} project={project} ds={ds} prep={prep} setSettings={setSettings} update={update} />
             )}
       </Suspense>
       <Modal open={help} onClose={() => setHelp(false)} title="Keyboard shortcuts">

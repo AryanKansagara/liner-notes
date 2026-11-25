@@ -9,7 +9,7 @@ import { ask, fmtDate, fmtN, Link, toast } from './ui.tsx'
 
 type Pending = { result: ParseResult; ignored: string[]; names: string[] }
 
-export default function Import({ project, ds, update }: { project: Project; ds: Stream[]; update(p: Partial<Project>): void }) {
+export default function Import({ project, ds, update }: { project: Project; ds: Stream[]; update(p: Partial<Project>): Promise<boolean> }) {
   const [over, setOver] = useState(false)
   const [busy, setBusy] = useState<{ message: string; pct: number } | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -39,13 +39,17 @@ export default function Import({ project, ds, update }: { project: Project; ds: 
     if (!pending) return
     const before = mode === 'merge' ? ds.length : 0
     const merged = mode === 'merge' ? mergeStreams(ds, pending.result.streams) : pending.result.streams
-    await putData(project.id, merged)
+    setErr(null)
+    try { await putData(project.id, merged) } catch {
+      setErr(`This history could not be stored: the browser refused to save ${fmtN(merged.length)} streams, usually because the disk or this site's storage is full. Nothing was imported and the history you had is unchanged. Free up some space, then try again.`)
+      return
+    }
     const ctx = buildCtx(merged, project.settings)
     const at = Date.now()
     const snap = snapshot(ctx, uuid(), fmtRequest(at), at)
     const meta = { id: uuid(), files: pending.names, rows: pending.result.streams.length, added: merged.length - before, skipped: pending.result.files.reduce((a, f) => a + f.skipped, 0), at }
-    update({ imports: [...(mode === 'merge' ? project.imports : []), meta], snapshots: [...project.snapshots, snap], dataMissing: false })
-    toast(`${fmtN(meta.added)} new streams added. Snapshot saved.`, { tone: 'ok' })
+    const saved = await update({ imports: [...(mode === 'merge' ? project.imports : []), meta], snapshots: [...project.snapshots, snap], dataMissing: false })
+    if (saved) toast(`${fmtN(meta.added)} new streams added. Snapshot saved.`, { tone: 'ok' })
     setPending(null)
   }
 

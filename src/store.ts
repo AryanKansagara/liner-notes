@@ -51,9 +51,11 @@ async function tx<T>(store: 'projects' | 'data', mode: IDBTransactionMode, fn: (
   const d = await db()
   if (!d) throw new Error('no-idb')
   return new Promise((res, rej) => {
-    const r = fn(d.transaction(store, mode).objectStore(store))
-    r.onsuccess = () => res(r.result)
-    r.onerror = () => rej(r.error)
+    const t = d.transaction(store, mode)
+    const r = fn(t.objectStore(store))
+    // A full disk can abort the transaction after the request itself succeeded, so a write only counts once it is complete.
+    t.oncomplete = () => res(r.result)
+    t.onerror = t.onabort = () => rej(t.error ?? r.error ?? new Error('The browser did not finish the request'))
   })
 }
 
@@ -63,8 +65,10 @@ async function idbGetAll<T>(store: 'projects'): Promise<T[]> {
 async function idbGet<T>(store: 'projects' | 'data', key: string): Promise<T | undefined> {
   try { return await tx(store, 'readonly', s => s.get(key)) as T | undefined } catch { return mem[store].get(key) as T | undefined }
 }
+/** Throws when the browser refuses the write. Memory is only used when there is no database, because reads only look there then. */
 async function idbPut(store: 'projects' | 'data', value: unknown, key?: string) {
-  try { await tx(store, 'readwrite', s => key === undefined ? s.put(value) : s.put(value, key)) } catch { mem[store].set(key ?? (value as { id: string }).id, value) }
+  if (!await db()) { mem[store].set(key ?? (value as { id: string }).id, value); return }
+  await tx(store, 'readwrite', s => key === undefined ? s.put(value) : s.put(value, key))
 }
 async function idbDel(store: 'projects' | 'data', key: string) {
   try { await tx(store, 'readwrite', s => s.delete(key)) } catch { mem[store].delete(key) }
@@ -77,8 +81,12 @@ let loaded = false
 const subs = new Set<() => void>()
 const emit = () => { projects = [...projects]; subs.forEach(f => f()) }
 const changeHooks = new Set<(p: Project) => void>()
+const saveErrorHooks = new Set<(p: Project) => void>()
 
 export const onProjectChange = (f: (p: Project) => void) => { changeHooks.add(f); return () => changeHooks.delete(f) }
+
+/** Called when the browser refuses to store a project. The change then only lives until the page is closed. */
+export const onSaveError = (f: (p: Project) => void) => { saveErrorHooks.add(f); return () => saveErrorHooks.delete(f) }
 
 export async function loadProjects() {
   projects = (await idbGetAll<Project>('projects')).sort((a, b) => b.updatedAt - a.updatedAt)
@@ -93,16 +101,21 @@ export function useProjects() {
 export const getProjects = () => projects
 export const getProject = (id: string) => projects.find(p => p.id === id)
 
-export async function saveProject(p: Project, opts: { touch?: boolean; silent?: boolean } = {}) {
+export const saveProject = async (p: Project, opts: { touch?: boolean; silent?: boolean } = {}) => (await trySaveProject(p, opts)).project
+
+/** Like saveProject, and says whether the browser stored it. */
+export async function trySaveProject(p: Project, opts: { touch?: boolean; silent?: boolean } = {}) {
   const next = opts.touch === false ? p : { ...p, updatedAt: Date.now() }
-  await idbPut('projects', next)
+  let saved = true
+  try { await idbPut('projects', next) } catch { saved = false }
   const i = projects.findIndex(x => x.id === p.id)
   if (i >= 0) projects[i] = next
   else projects.unshift(next)
   projects.sort((a, b) => b.updatedAt - a.updatedAt)
   emit()
   if (!opts.silent) changeHooks.forEach(f => f(next))
-  return next
+  if (!saved) saveErrorHooks.forEach(f => f(next))
+  return { project: next, saved }
 }
 
 /** Deletes locally; returns an undo function that restores the project and its data. */
@@ -117,8 +130,10 @@ export async function deleteProject(id: string): Promise<() => Promise<void>> {
   return async () => {
     if (!p) return
     removeTombstone(id)
-    if (data) await idbPut('data', data, id)
+    let restored = true
+    if (data) try { await idbPut('data', data, id) } catch { restored = false }
     await saveProject(p)
+    if (!restored) saveErrorHooks.forEach(f => f(p))
   }
 }
 

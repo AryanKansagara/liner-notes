@@ -3,7 +3,7 @@ import { addMonths, buildCtx, monthRange, prepare, snapshot, sliceCtx } from './
 import { SAMPLES, generate, sampleRules } from './engine/sample.ts'
 import type { Rule, Settings, Stream } from './engine/types.ts'
 import { toast } from './ui.tsx'
-import { blankSettings, getData, getProjects, saveProject, useProjects, uuid, type Dataset, type Project } from './store.ts'
+import { blankSettings, getData, getProjects, saveProject, trySaveProject, useProjects, uuid, type Dataset, type Project } from './store.ts'
 
 const sampleCache = new Map<string, Stream[]>()
 export function sampleStreams(id: string): Stream[] | null {
@@ -49,7 +49,7 @@ export function useProject(id: string) {
     void getData(project.id).then(d => { if (live) setDs(d ?? []) })
     return () => { live = false }
   }, [project?.id, project?.sampleId, importsKey])
-  const update = (patch: Partial<Project>) => project && saveProject({ ...project, ...patch })
+  const update = async (patch: Partial<Project>) => !!project && (await trySaveProject({ ...project, ...patch })).saved
   const setSettings = (patch: Partial<Settings>) => project && saveProject({ ...project, settings: { ...project.settings, ...patch } })
   return { loading: list === null || (project !== null && ds === null), project, ds, update, setSettings }
 }

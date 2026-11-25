@@ -5,7 +5,6 @@ import { AUDIO, download, expect, HAND, importFiles, kpi, newListener, panel, pl
 const MIN = 60_000
 
 test('#2 storage: a history the browser refuses to store is not reported as imported', async ({ page }) => {
-  test.fail()
   await page.addInitScript(() => {
     const put = IDBObjectStore.prototype.put
     IDBObjectStore.prototype.put = function (...a: [unknown, IDBValidKey?]) {
@@ -19,6 +18,47 @@ test('#2 storage: a history the browser refuses to store is not reported as impo
   await expect(page.locator('.toast, .banner').first()).toBeVisible()
   await expect(page.getByText(/new streams added/)).toHaveCount(0, { timeout: 2000 })
   await expect(page.getByText(/could not be (saved|stored)/i).first()).toBeVisible({ timeout: 5000 })
+  await expect(report(page)).toBeVisible()
+  await expect(panel(page, 'Imports')).toHaveCount(0)
+  await section(page, 'History')
+  await expect(page.getByText('No snapshots yet')).toBeVisible()
+})
+
+test('#2 storage: a write aborted as it commits keeps the earlier history', async ({ page }) => {
+  await page.addInitScript(() => {
+    const put = IDBObjectStore.prototype.put
+    IDBObjectStore.prototype.put = function (...a: [unknown, IDBValidKey?]) {
+      const r = put.apply(this, a)
+      if (this.name === 'data' && (a[0] as unknown[]).length > 10) r.addEventListener('success', () => this.transaction.abort())
+      return r
+    }
+  })
+  await newListener(page)
+  await importFiles(page, 10, { name: AUDIO, data: HAND })
+  await upload(page, { name: AUDIO, data: [...HAND, play('2024-03-01T12:00:00Z', MIN, 'Eve', 'Echo')] })
+  await report(page).getByRole('button', { name: 'Add to this history' }).click()
+  await expect(page.getByText(/could not be stored/)).toBeVisible()
+  await expect(page.getByText('1 new streams added')).toHaveCount(0)
+  await page.reload()
+  await expect(panel(page, 'Imports').locator('tbody tr')).toHaveCount(1)
+  await expect(panel(page, 'Imports')).toContainText('10 streams on this device')
+})
+
+test('#2 storage: a rule the browser cannot keep is reported', async ({ page }) => {
+  await newListener(page)
+  await importFiles(page, 10, { name: AUDIO, data: HAND })
+  await page.evaluate(() => { IDBObjectStore.prototype.put = () => { throw new DOMException('full', 'QuotaExceededError') } })
+  await section(page, 'Top lists')
+  await page.locator('.toplist li').filter({ hasText: 'Gamma' }).getByRole('button', { name: 'Exclude' }).click()
+  await expect(page.getByText(/My history could not be saved/)).toBeVisible()
+})
+
+test('#2 storage: without a database the history still works until the page is closed', async ({ page }) => {
+  await page.addInitScript(() => { IDBFactory.prototype.open = () => { throw new DOMException('blocked', 'SecurityError') } })
+  await newListener(page)
+  await importFiles(page, 10, { name: AUDIO, data: HAND })
+  await section(page, 'Overview')
+  await expect(kpi(page, /^Plays/).locator('b')).toHaveText('7')
 })
 
 test('#3 validity: one impossible row is skipped with a reason and does not break the listener', async ({ page }) => {

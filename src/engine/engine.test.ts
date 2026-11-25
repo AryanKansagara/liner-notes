@@ -310,6 +310,15 @@ test('sessions split on gaps longer than the setting', () => {
   assert.equal(sessions(ctxOf(list))[0].n, 2)
 })
 
+test('sessions use elapsed time, not the wall clock, across both clock changes', () => {
+  const mins = (list: Stream[], tz: string) => sessions(ctxOf(list, { tz })).map(x => [(x.end - x.start) / MIN, x.n])
+  const list = ['2024-03-10T06:56:00Z', '2024-03-10T07:00:00Z', '2024-11-03T05:50:00Z', '2024-11-03T06:55:00Z'].map((t, i) => st(t, 4 * MIN, 'A', String(i)))
+  for (const tz of ['America/New_York', 'UTC', 'Australia/Lord_Howe']) assert.deepEqual(mins(list, tz), [[8, 2], [4, 1], [4, 1]], tz)
+  // One stream that plays through the change lasts as long as it was played, and the next one joins it.
+  const through = [st('2024-11-03T05:30:00Z', 60 * MIN, 'A', 'long'), st('2024-11-03T06:30:00Z', 10 * MIN, 'A', 'next')]
+  assert.deepEqual(mins(through, 'America/New_York'), [[70, 2]])
+})
+
 test('session median is the middle value, or the mean of the two middle values', () => {
   const mk = (mins: number[]) => mins.map((m, i) => ({ start: i * 1e7, end: i * 1e7 + m * MIN, ms: m * MIN, n: 1 }))
   assert.equal(sessionStats(mk([10, 30, 20])).medianMin, 20)

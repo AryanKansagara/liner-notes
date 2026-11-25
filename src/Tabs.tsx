@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
-  clock, discovery, eras, firstListens, lostFavourites, monthly, openUrl, peakHour, sessions, sessionStats, skipStats, sliceCtx, streaks,
-  suggestRules, toCsv, top, totals, trackIndex, uriList, type Metric, type TopBy, type TopRow,
+  clock, dateOf, dayOf, discovery, eras, firstListens, lostFavourites, monthly, openUrl, peakHour, sessions, sessionStats, skipStats, sliceCtx, streaks,
+  suggestRules, toCsv, top, totals, trackIndex, tzOffset, uriList, type Metric, type TopBy, type TopRow,
 } from './engine/analyze.ts'
 import { EraStrip, Heatmap, MonthBars, Stat, TopList } from './charts.tsx'
 import type { Tab, TabProps } from './Project.tsx'
@@ -141,7 +141,7 @@ function Habits({ project, prep }: TabProps) {
         <div className="panel-head"><h2>When you listen</h2><span className="muted small">{project.settings.tz} · <Link href={`/app/p/${project.id}/fix#settings`}>change</Link></span></div>
         <Heatmap clock={d.cl} />
         <div className="hour-bars" aria-hidden="true">{d.peak.byHour.map((v, h) => <i key={h} style={{ height: `${(v / Math.max(...d.peak.byHour)) * 100}%` }} title={fmtHour(h)} />)}</div>
-        <p className="muted small">Peak hour {fmtHour(d.peak.hour)}; busiest day {DAYS[d.peak.weekday]}. Longest session {d.ss.longest ? `${fmtHours(d.ss.longest.end - d.ss.longest.start)} on ${fmtDay(new Date(d.ss.longest.start).toISOString().slice(0, 10))} (${d.ss.longest.n} streams)` : '—'}.</p>
+        <p className="muted small">Peak hour {fmtHour(d.peak.hour)}; busiest day {DAYS[d.peak.weekday]}. Longest session {d.ss.longest ? `${fmtHours(d.ss.longest.end - d.ss.longest.start)} on ${fmtDay(dateOf(dayOf(d.ss.longest.start + tzOffset(d.ss.longest.start, ctx.tz))))} (${d.ss.longest.n} streams)` : '—'}.</p>
       </div>
       <div className="grid-2">
         <div className="panel">

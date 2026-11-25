@@ -214,7 +214,6 @@ test('#8 undo: taking back one snapshot keeps the snapshot and the rule made sin
 })
 
 test('#9 sessions: clocks going forward do not split one, clocks going back do not join two', async ({ page }) => {
-  test.fail()
   await newListener(page, 'America/New_York')
   await importFiles(page, 4, { name: AUDIO, data: [
     // New York, 10 March 2024: 1:56-2:00 EST (06:56 UTC), then straight on at 3:00 EDT (07:00 UTC). One session.
@@ -223,8 +222,18 @@ test('#9 sessions: clocks going forward do not split one, clocks going back do n
     play('2024-11-03T05:50:00Z', 4 * MIN, 'Ada', 'Alpha'), play('2024-11-03T06:55:00Z', 4 * MIN, 'Ada', 'Alpha'),
   ] })
   await section(page, 'Habits')
+  await expect(kpi(page, 'Sessions')).toContainText('median 4 min', { timeout: 5000 })
+  await expect(panel(page, 'When you listen')).toContainText('Longest session 0.1 h on Mar 10, 2024 (2 streams)')
   // Three sessions: 8, 4 and 4 minutes, so a mean of 16 / 3 = 5.3. Split and joined the wrong way they are 4, 4 and 9.
   await expect(panel(page, 'Streaks')).toContainText('Average session5 min', { timeout: 5000 })
+})
+
+test('#9 sessions: the longest one is dated by the local day', async ({ page }) => {
+  await newListener(page, 'America/New_York')
+  // 02:00 UTC on 2 January is 9 pm on 1 January in New York.
+  await importFiles(page, 1, { name: AUDIO, data: [play('2024-01-02T02:00:00Z', 3 * MIN, 'Ada', 'Alpha')] })
+  await section(page, 'Habits')
+  await expect(panel(page, 'When you listen')).toContainText('on Jan 1, 2024 (1 streams)')
 })
 
 test('#10 history: the unfinished last month of the older request is not reported as changed', async ({ page }) => {

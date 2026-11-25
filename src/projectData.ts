@@ -3,7 +3,7 @@ import { addMonths, buildCtx, monthRange, prepare, snapshot, sliceCtx } from './
 import { SAMPLES, generate, sampleRules } from './engine/sample.ts'
 import type { Rule, Settings, Stream } from './engine/types.ts'
 import { toast } from './ui.tsx'
-import { blankSettings, getData, getProjects, saveProject, trySaveProject, useProjects, uuid, type Dataset, type Project } from './store.ts'
+import { blankSettings, editProject, editRules, getData, getProjects, saveProject, useProjects, uuid, type Dataset, type Project } from './store.ts'
 
 const sampleCache = new Map<string, Stream[]>()
 export function sampleStreams(id: string): Stream[] | null {
@@ -49,8 +49,8 @@ export function useProject(id: string) {
     void getData(project.id).then(d => { if (live) setDs(d ?? []) })
     return () => { live = false }
   }, [project?.id, project?.sampleId, importsKey])
-  const update = async (patch: Partial<Project>) => !!project && (await trySaveProject({ ...project, ...patch })).saved
-  const setSettings = (patch: Partial<Settings>) => project && saveProject({ ...project, settings: { ...project.settings, ...patch } })
+  const update = (change: (p: Project) => Partial<Project>) => editProject(id, change)
+  const setSettings = (patch: Partial<Settings>) => void editProject(id, p => ({ settings: { ...p.settings, ...patch } }))
   return { loading: list === null || (project !== null && ds === null), project, ds, update, setSettings }
 }
 
@@ -71,11 +71,14 @@ export const lastYearStart = (range: { from: string; to: string } | null) => {
   return start < range.from ? range.from : start
 }
 
-/** Adds or toggles a rule with an undo toast. Matching rules are switched on instead of duplicated. */
+/** Adds or toggles a rule with an undo toast that takes back this rule only. Matching rules are switched on instead of duplicated. */
 export function addRule(project: Project, rule: Omit<Rule, 'id' | 'on'>) {
-  const prev = project.settings.rules
-  const same = prev.find(r => r.kind === rule.kind && r.value.toLowerCase() === rule.value.toLowerCase())
-  const rules = same ? prev.map(r => r === same ? { ...r, on: true } : r) : [...prev, { ...rule, id: uuid(), on: true }]
-  void saveProject({ ...project, settings: { ...project.settings, rules } })
-  toast(`Excluding ${rule.label || rule.value || rule.kind}. Everything recomputed.`, { tone: 'ok', undo: () => void saveProject({ ...project, settings: { ...project.settings, rules: prev } }) })
+  const added: Rule = { ...rule, id: uuid(), on: true }
+  let same: Rule | undefined
+  void editRules(project.id, rules => {
+    same = rules.find(r => r.kind === rule.kind && r.value.toLowerCase() === rule.value.toLowerCase())
+    return same ? rules.map(r => r === same ? { ...r, on: true } : r) : [...rules, added]
+  })
+  const undo = () => void editRules(project.id, rules => same ? rules.map(r => r.id === same!.id ? { ...r, on: same!.on } : r) : rules.filter(r => r.id !== added.id))
+  toast(`Excluding ${rule.label || rule.value || rule.kind}. Everything recomputed.`, { tone: 'ok', undo })
 }

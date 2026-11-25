@@ -6,7 +6,7 @@ import { uuid } from './store.ts'
 import { deleteSnapshotCloud } from './sync.ts'
 import { Empty, fmtDate, fmtN, signed, toast } from './ui.tsx'
 
-export default function History({ project, update, prep }: { project: Project; update(p: Partial<Project>): Promise<boolean>; prep: Prepared | null }) {
+export default function History({ project, update, prep }: { project: Project; update(change: (p: Project) => Partial<Project>): Promise<boolean>; prep: Prepared | null }) {
   const snaps = useMemo(() => [...project.snapshots].sort((a, b) => a.at - b.at), [project.snapshots])
   const [aId, setA] = useState<string | null>(null)
   const [bId, setB] = useState<string | null>(null)
@@ -17,14 +17,13 @@ export default function History({ project, update, prep }: { project: Project; u
   const saveNow = () => {
     if (!prep?.ctx.s.length) { toast('Import data first', { tone: 'error' }); return }
     const s = snapshot(prep.ctx, uuid(), `Snapshot of ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`)
-    void update({ snapshots: [...project.snapshots, s] })
-    toast('Snapshot saved', { tone: 'ok', undo: () => void update({ snapshots: project.snapshots }) })
+    void update(p => ({ snapshots: [...p.snapshots, s] }))
+    toast('Snapshot saved', { tone: 'ok', undo: () => void update(p => ({ snapshots: p.snapshots.filter(x => x.id !== s.id) })) })
   }
   const remove = (s: Snapshot) => {
-    const prev = project.snapshots
-    void update({ snapshots: prev.filter(x => x.id !== s.id) })
+    void update(p => ({ snapshots: p.snapshots.filter(x => x.id !== s.id) }))
     void deleteSnapshotCloud(s.id)
-    toast(`Deleted ${s.label}`, { undo: () => void update({ snapshots: prev }) })
+    toast(`Deleted ${s.label}`, { undo: () => void update(p => ({ snapshots: [...p.snapshots.filter(x => x.id !== s.id), s] })) })
   }
 
   return (

@@ -151,7 +151,6 @@ test('#7 csv: a title that starts like a formula is exported as text', async ({ 
 })
 
 test('#8 undo: taking back a rule keeps a setting changed since', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await importFiles(page, 10, { name: AUDIO, data: HAND })
   await section(page, 'Top lists')
@@ -163,6 +162,55 @@ test('#8 undo: taking back a rule keeps a setting changed since', async ({ page 
   await page.getByRole('button', { name: 'Undo' }).click()
   await expect(page.locator('.rules li')).toHaveCount(0)
   await expect(gap).toHaveValue('45', { timeout: 5000 })
+})
+
+test('#8 undo: two quick excludes both stick, and undoing one keeps the other', async ({ page }) => {
+  await newListener(page)
+  await importFiles(page, 10, { name: AUDIO, data: HAND })
+  await section(page, 'Top lists')
+  const exclude = page.locator('.toplist li').filter({ hasText: /Gamma|Delta/ }).getByRole('button', { name: 'Exclude' })
+  await expect(exclude).toHaveCount(2)
+  await exclude.evaluateAll(els => els.forEach(e => (e as HTMLElement).click()))
+  await section(page, 'Fix my Wrapped')
+  const rules = page.locator('.rules li')
+  await expect(rules).toHaveCount(2)
+  await page.locator('.toast').filter({ hasText: 'Excluding Gamma' }).getByRole('button', { name: 'Undo' }).click()
+  await expect(rules).toHaveCount(1)
+  await expect(rules).toContainText('Delta')
+  await page.reload()
+  await expect(rules).toHaveCount(1)
+})
+
+test('#8 undo: a removed rule comes back in its place, beside one added since', async ({ page }) => {
+  await newListener(page)
+  await importFiles(page, 10, { name: AUDIO, data: HAND })
+  await section(page, 'Fix my Wrapped')
+  const form = page.locator('form.add-rule')
+  const add = async (word: string) => { await form.getByPlaceholder('sleep, rain').fill(word); await form.getByRole('button', { name: 'Add rule' }).click(); await expect(page.locator('.rules li').last()).toContainText(word) }
+  const rules = page.locator('.rules li b')
+  await add('alpha'); await add('beta')
+  await page.locator('.rules li').first().getByRole('button', { name: 'Remove' }).click()
+  await expect(rules).toHaveText([/beta/])
+  await add('gamma')
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect(rules).toHaveText([/alpha/, /beta/, /gamma/])
+})
+
+test('#8 undo: taking back one snapshot keeps the snapshot and the rule made since', async ({ page }) => {
+  await newListener(page)
+  await importFiles(page, 10, { name: AUDIO, data: HAND })
+  await section(page, 'History')
+  const rows = panel(page, 'Snapshots').locator('tbody tr')
+  await page.getByRole('button', { name: 'Save a snapshot now' }).click()
+  await expect(rows).toHaveCount(2)
+  await page.getByRole('button', { name: 'Save a snapshot now' }).click()
+  await expect(rows).toHaveCount(3)
+  await section(page, 'Top lists')
+  await page.locator('.toplist li').filter({ hasText: 'Gamma' }).getByRole('button', { name: 'Exclude' }).click()
+  await page.locator('.toast').filter({ hasText: 'Snapshot saved' }).first().getByRole('button', { name: 'Undo' }).click()
+  await section(page, 'History')
+  await expect(rows).toHaveCount(2)
+  await expect(page.locator('.rules-pill')).toContainText('1 exclusion on')
 })
 
 test('#9 sessions: clocks going forward do not split one, clocks going back do not join two', async ({ page }) => {

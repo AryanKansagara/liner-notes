@@ -62,10 +62,13 @@ test('#2 storage: without a database the history still works until the page is c
 })
 
 test('#3 validity: one impossible row is skipped with a reason and does not break the listener', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await upload(page, { name: AUDIO, data: [...HAND, { ...HAND[0], ms_played: 1e16 }, { ...HAND[1], ms_played: null }, { ...HAND[1], ts: '5' }] })
   await expect(report(page)).toContainText('3 rows skipped', { timeout: 10_000 })
+  await expect(report(page).locator('.issues > div')).toHaveText([/:11ms_played is longer than 7 days/, /:12ms_played is missing/, /:13Unreadable ts "5"/])
+  await report(page).getByRole('button', { name: 'Import' }).click()
+  await section(page, 'Overview')
+  await expect(kpi(page, /^Plays/).locator('b')).toHaveText('7')
 })
 
 test('#4 merge: two artists with the same title in one minute are two streams', async ({ page }) => {

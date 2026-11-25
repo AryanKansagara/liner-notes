@@ -53,12 +53,31 @@ export const parseJson = (text: string): unknown => JSON.parse(text.replace(/^\u
 const str = (v: unknown) => typeof v === 'string' ? v.trim() : ''
 const bool = (v: unknown) => v === true || v === 'true' ? true : v === false || v === 'false' ? false : undefined
 
-/** Parses Spotify's timestamps. Extended: ISO with Z. Basic: "2024-03-01 13:45" in UTC. */
+/** Parses Spotify's timestamps, NaN for anything else. Extended: ISO with Z (or an offset). Basic: "2024-03-01 13:45" in UTC. */
 export function parseTs(v: unknown): number {
   if (typeof v !== 'string') return NaN
   const s = v.trim()
-  if (/^\d{4}-\d\d-\d\d \d\d:\d\d(:\d\d)?$/.test(s)) return Date.parse(s.replace(' ', 'T') + 'Z')
-  return Date.parse(s)
+  const m = /^(\d{4})-(\d\d)-(\d\d)(?:T(\d\d):(\d\d)(?::(\d\d)(?:\.\d+)?)?(?:Z|[+-]\d\d:?\d\d)| (\d\d):(\d\d)(?::(\d\d))?)$/.exec(s)
+  if (!m) return NaN
+  const [y, mo, d] = [+m[1], +m[2], +m[3]]
+  // Date.parse rolls 30 February over into March.
+  if (mo < 1 || mo > 12 || d < 1 || d > new Date(Date.UTC(y, mo, 0)).getUTCDate()) return NaN
+  if (+(m[4] ?? m[7]) > 23 || +(m[5] ?? m[8]) > 59 || +(m[6] ?? m[9] ?? 0) > 59) return NaN
+  return Date.parse(s.includes(' ') ? s.replace(' ', 'T') + 'Z' : s)
+}
+
+/** No single play lasts this long; a bigger value is damage and would put the start of the play outside any calendar. */
+const MAX_PLAY_MS = 7 * 86_400_000
+/** Spotify was founded in 2006. */
+const FIRST_TS = Date.UTC(2006, 0, 1)
+
+/** Milliseconds played, or the reason the value cannot be one. */
+function playMs(v: unknown, field: string): number | string {
+  if (v === undefined || v === null || v === '') return `${field} is missing or negative`
+  const ms = typeof v === 'number' ? v : typeof v === 'string' && /^\s*-?\d+(\.\d+)?\s*$/.test(v) ? Number(v) : NaN
+  if (!Number.isFinite(ms)) return `${field} is not a number`
+  if (ms < 0) return `${field} is missing or negative`
+  return ms > MAX_PLAY_MS ? `${field} is longer than 7 days` : ms
 }
 
 /**
@@ -89,6 +108,8 @@ export function parseFile(name: string, rows: unknown): { kind: FileKind; stream
   const list = Array.isArray(rows) ? rows : []
   if (kind === 'ignored') return { kind, streams, report: { file: name, kind, rows: list.length, kept: 0, skipped: 0 }, issues, issueCount, groups }
 
+  // Two days of slack for clocks and timezones.
+  const latest = Date.now() + 2 * 86_400_000
   let skipped = 0, from = Infinity, to = -Infinity
   list.forEach((raw, i) => {
     const row = i + 1
@@ -96,10 +117,11 @@ export function parseFile(name: string, rows: unknown): { kind: FileKind; stream
     const r = raw as Record<string, unknown>
     let s: Stream | null = null
     if (kind === 'extended-audio' || kind === 'extended-video') {
-      const ms = Number(r.ms_played)
+      const ms = playMs(r.ms_played, 'ms_played')
       let ts = parseTs(r.ts)
       if (!Number.isFinite(ts)) { skipped++; push(row, 'error', `Unreadable ts "${String(r.ts)}"`); return }
-      if (!Number.isFinite(ms) || ms < 0) { skipped++; push(row, 'error', 'ms_played is missing or negative'); return }
+      if (ts < FIRST_TS || ts > latest) { skipped++; push(row, 'error', `Date before Spotify existed or in the future "${String(r.ts)}"`); return }
+      if (typeof ms === 'string') { skipped++; push(row, 'error', ms); return }
       ts = offlineEnd(ts, ms, r.offline, r.offline_timestamp)
       const trackName = str(r.master_metadata_track_name), ep = str(r.episode_name), book = str(r.audiobook_chapter_title) || str(r.audiobook_title)
       let k: Kind, track: string, artist: string, album: string, uri: string
@@ -121,9 +143,10 @@ export function parseFile(name: string, rows: unknown): { kind: FileKind; stream
       if (p) s.platform = p
     } else {
       const ts = parseTs(r.endTime)
-      const ms = Number(r.msPlayed)
+      const ms = playMs(r.msPlayed, 'msPlayed')
       if (!Number.isFinite(ts)) { skipped++; push(row, 'error', `Unreadable endTime "${String(r.endTime)}"`); return }
-      if (!Number.isFinite(ms) || ms < 0) { skipped++; push(row, 'error', 'msPlayed is missing or negative'); return }
+      if (ts < FIRST_TS || ts > latest) { skipped++; push(row, 'error', `Date before Spotify existed or in the future "${String(r.endTime)}"`); return }
+      if (typeof ms === 'string') { skipped++; push(row, 'error', ms); return }
       if (kind === 'basic-music') {
         const track = str(r.trackName)
         if (!track) { skipped++; push(row, 'warn', 'Empty trackName'); return }

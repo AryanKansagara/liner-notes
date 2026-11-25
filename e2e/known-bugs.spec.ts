@@ -247,11 +247,21 @@ test('#10 history: the unfinished last month of the older request is not reporte
 })
 
 test('#11 dates: the covered dates use the listener timezone they are labelled with', async ({ page }) => {
-  test.fail()
   await newListener(page, 'America/New_York')
   // 02:00 UTC on 2 January is 9 pm on 1 January in New York.
   await importFiles(page, 1, { name: AUDIO, data: [play('2024-01-02T02:00:00Z', 3 * MIN, 'Ada', 'Alpha')] })
   await expect(page.getByText(/times in America\/New_York/)).toContainText('Jan 1, 2024 to Jan 1, 2024', { timeout: 5000 })
+})
+
+test('#11 dates: last_played in the lost-favourites CSV is the local day', async ({ page }) => {
+  await newListener(page, 'America/New_York')
+  // Ten evenings in New York, the last at 9 pm on 10 January, then another artist 200 days later.
+  const evenings = Array.from({ length: 10 }, (_, i) => play(`2024-01-${String(i + 2).padStart(2, '0')}T02:00:00Z`, 3 * MIN, 'Ada', 'Alpha'))
+  await importFiles(page, 11, { name: AUDIO, data: [...evenings, play('2024-07-29T02:00:00Z', 3 * MIN, 'Bex', 'Beta')] })
+  await section(page, 'Rediscover')
+  const [, csv] = await download(page, panel(page, 'Lost favourites').getByRole('button', { name: 'CSV' }))
+  const [head, row] = readCsv(csv)
+  expect([row[head.indexOf('last_played')], row[head.indexOf('days_since')]]).toEqual(['2024-01-10', '200'])
 })
 
 test('#12 empty: with everything excluded no section shows a busiest hour', async ({ page }) => {

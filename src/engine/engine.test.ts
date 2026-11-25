@@ -32,6 +32,16 @@ test('detects extended audio, video, basic music and podcast files', () => {
   assert.ok(!isHistoryName('MyData/Playlist1.json'))
 })
 
+test('a damaged first row does not hide the rest of the file', () => {
+  const ok = { ts: '2024-05-01T08:03:00Z', ms_played: 1000, master_metadata_track_name: 'x', master_metadata_album_artist_name: 'a' }
+  for (const bad of [null, {}, 'x', 5, [], { ts: '2024-05-01T08:03:00Z' }]) {
+    const r = parseFile('Streaming_History_Audio_2024.json', [bad, ok])
+    assert.deepEqual([r.kind, r.report.kept, r.report.skipped, r.issues[0].row], ['extended-audio', 1, 1, 1])
+  }
+  assert.equal(detectKind('StreamingHistory_music_0.json', [null, { endTime: '2024-01-01 10:00', msPlayed: 1 }]), 'basic-music')
+  for (const none of [[], [null], [{ a: 1 }, 'x'], {}, null, 'text', [[]]]) assert.equal(detectKind('Streaming_History_Audio_2024.json', none), 'ignored')
+})
+
 test('basic export timestamps are minute-precision UTC', () => {
   assert.equal(parseTs('2024-03-01 13:45'), Date.UTC(2024, 2, 1, 13, 45))
   assert.equal(parseTs('2024-03-01T13:45:10Z'), Date.UTC(2024, 2, 1, 13, 45, 10))

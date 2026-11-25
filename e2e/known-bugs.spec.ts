@@ -84,15 +84,25 @@ test('#4 merge: a 20 second sound on repeat keeps every repeat', async ({ page }
 })
 
 test('#5 unreadable: a damaged history file among good ones is called out', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await upload(page, { name: AUDIO, data: HAND }, { name: 'Streaming_History_Audio_2023.json', data: '[{"ts":"2023-01' })
   await expect(report(page)).toBeVisible()
   await expect(report(page).locator('[role=alert]')).toContainText('Streaming_History_Audio_2023.json', { timeout: 5000 })
+  await expect(report(page)).not.toContainText('Ignored:')
+})
+
+test('#5 unreadable: every damaged file is named, unrelated files are not', async ({ page }) => {
+  await newListener(page)
+  const bad = Array.from({ length: 9 }, (_, i) => ({ name: `Streaming_History_Audio_${2010 + i}_${i}.json`, data: i % 2 ? '' : { error: 'x' } }))
+  await upload(page, { name: AUDIO, data: HAND }, ...bad, { name: 'notes.txt', data: 'x' }, { name: 'Playlist1.json', data: {} })
+  const warning = report(page).locator('[role=alert]')
+  await expect(warning).toContainText('9 files could not be read')
+  for (const b of bad) await expect(warning).toContainText(b.name)
+  await expect(warning).not.toContainText(/notes|Playlist/)
+  await expect(report(page)).toContainText('Ignored: notes.txt, Playlist1.json (not streaming history)')
 })
 
 test('#5 unreadable: a history file whose first row is damaged keeps its other rows', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await upload(page, { name: AUDIO, data: [null, ...HAND] })
   await expect(report(page)).toContainText('10 unique streams', { timeout: 10_000 })

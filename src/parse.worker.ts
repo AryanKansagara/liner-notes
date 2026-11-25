@@ -5,7 +5,7 @@ import { isHistoryName, parseJson, parseMany } from './engine/parse.ts'
 export type WorkerIn = { files: File[] }
 export type WorkerOut =
   | { type: 'progress'; message: string; pct: number }
-  | { type: 'done'; result: ReturnType<typeof parseMany>; ignored: string[] }
+  | { type: 'done'; result: ReturnType<typeof parseMany>; /** History files that could not be read */ unreadable: string[]; ignored: string[] }
   | { type: 'error'; message: string }
 
 const post = (m: WorkerOut) => postMessage(m)
@@ -15,6 +15,7 @@ onmessage = async (e: MessageEvent<WorkerIn>) => {
   try {
     const inputs: { name: string; text: string }[] = []
     const ignored: string[] = []
+    const unreadable: string[] = []
     const files = e.data.files
     for (let i = 0; i < files.length; i++) {
       const f = files[i]
@@ -29,12 +30,17 @@ onmessage = async (e: MessageEvent<WorkerIn>) => {
     const parsed: { name: string; rows: unknown }[] = []
     for (let i = 0; i < inputs.length; i++) {
       post({ type: 'progress', message: `Parsing ${inputs[i].name.split('/').pop()}`, pct: 40 + (i / Math.max(1, inputs.length)) * 50 })
-      try { parsed.push({ name: inputs[i].name, rows: parseJson(inputs[i].text) }) } catch { ignored.push(`${inputs[i].name} (not valid JSON)`) }
+      try { parsed.push({ name: inputs[i].name, rows: parseJson(inputs[i].text) }) } catch { unreadable.push(`${inputs[i].name} (not valid JSON)`) }
     }
     post({ type: 'progress', message: 'Merging and de-duplicating', pct: 92 })
     const result = parseMany(parsed)
-    for (const f of result.files) if (f.kind === 'ignored') ignored.push(`${f.file} (not streaming history)`)
-    post({ type: 'done', result, ignored })
+    // An empty list is a valid, if useless, history file; anything else under a history name is damaged.
+    parsed.forEach((p, i) => {
+      if (result.files[i].kind !== 'ignored') return
+      const damaged = isHistoryName(p.name) && !(Array.isArray(p.rows) && !p.rows.length)
+      ;(damaged ? unreadable : ignored).push(`${p.name} (not streaming history)`)
+    })
+    post({ type: 'done', result, unreadable, ignored })
   } catch (err) {
     post({ type: 'error', message: err instanceof Error ? err.message : String(err) })
   }

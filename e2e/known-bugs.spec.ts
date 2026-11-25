@@ -295,13 +295,12 @@ test('#12 empty: a listener without data has nothing to print, and no rules are 
 })
 
 test('#13 label: the plays tile names the threshold in force', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await importFiles(page, 10, { name: AUDIO, data: HAND })
   await section(page, 'Fix my Wrapped')
   await panel(page, 'Definitions').getByLabel('A play counts from').fill('60')
   await section(page, 'Overview')
-  await expect(kpi(page, /^Plays/)).toContainText('60 s or more', { timeout: 5000 })
+  await expect(kpi(page, /^Plays/)).toHaveText('Plays (60 s or more)63 different tracks', { timeout: 5000 })
 })
 
 test('#14 suggestions: an artist called Train is not suggested as rain noise', async ({ page }) => {

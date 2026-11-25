@@ -588,8 +588,14 @@ export function compareSnapshots(a: Snapshot, b: Snapshot) {
   const changes: RankChange[] = []
   for (const [name, after] of rb) { const before = ra.get(name) ?? null; changes.push({ name, before, after, delta: before === null ? null : before - after }) }
   for (const [name, before] of ra) if (!rb.has(name)) changes.push({ name, before, after: null, delta: null })
-  const newMonths = Object.keys(b.months).filter(m => !(m in a.months)).sort()
-  const changedMonths = Object.keys(b.months).filter(m => m in a.months && Math.abs(b.months[m] - a.months[m]) > 60_000).sort()
+  // A month without listening between two others is stored as 0.
+  const newMonths = Object.keys(b.months).filter(m => !(m in a.months) && b.months[m] > 0).sort()
+  // The older request stopped part-way through its last month, so that month was bound to grow. Shrinking is still a change.
+  const lastMonth = Object.keys(a.months).sort().at(-1)
+  const changedMonths = Object.keys(b.months).filter(m => {
+    const grew = b.months[m] - a.months[m]
+    return m in a.months && Math.abs(grew) > 60_000 && !(m === lastMonth && grew > 0)
+  }).sort()
   return {
     addedStreams: b.streams - a.streams, addedPlays: b.plays - a.plays, addedMs: b.ms - a.ms,
     addedArtists: b.artists - a.artists, addedTracks: b.tracks - a.tracks,

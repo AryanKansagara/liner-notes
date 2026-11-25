@@ -37,7 +37,7 @@ function Overview({ project, prep }: TabProps) {
       )}
       <div className="kpis">
         <Stat label="Hours listened" value={fmtN(d.t.ms / 3_600_000)} note={`${fmtN(d.t.musicMs / 60_000)} min of music, ${fmtN(d.t.talkMs / 60_000)} of podcasts`} />
-        <Stat label="Plays (30 s or more)" value={fmtN(d.t.plays)} note={`${fmtN(d.t.tracks)} different tracks`} />
+        <Stat label={`Plays (${project.settings.minPlaySec} s or more)`} value={fmtN(d.t.plays)} note={`${fmtN(d.t.tracks)} different tracks`} />
         <Stat label="Artists" value={fmtN(d.t.artists)} note={`${fmtN(d.t.activeDays)} days with music`} />
         <Stat label="Longest streak" value={`${d.st.longest.days} days`} note={d.st.longest.days ? `${fmtDay(d.st.longest.from)} to ${fmtDay(d.st.longest.to)}` : ''} />
       </div>

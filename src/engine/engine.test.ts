@@ -128,6 +128,31 @@ test('a short song on repeat is not collapsed by de-duplication', () => {
   assert.equal(parseMany([{ name: 'Streaming_History_Audio_2024.json', rows: [row('2024-05-01T08:00:50Z'), row('2024-05-01T08:01:35Z'), row('2024-05-01T08:02:20Z')] }]).streams.length, 3)
 })
 
+test('merging keeps different plays apart and adds nothing when a request is imported again', () => {
+  const x = (ts: string, ms: number, track: string, artist: string, uri = `spotify:track:${artist}${track}`): Stream => ({ ts: Date.parse(ts), ms, track, artist, album: '', uri, kind: 'track' })
+  const basic = (end: string, ms: number, track: string, artist: string) => x(end, ms, track, artist, '')
+  const names = (l: Stream[]) => l.map(s => `${s.artist}${s.uri ? '' : '*'}`).join(' ')
+  const ext = [x('2024-01-01T10:00:10Z', 10_000, 'Intro', 'Ada'), x('2024-01-01T10:00:30Z', 10_000, 'Intro', 'Bex'), x('2024-01-01T10:00:50Z', 10_000, 'Intro', 'Ada'), x('2024-01-01T10:00:50Z', 10_000, 'Intro', 'Cleo')]
+  assert.equal(names(mergeStreams(ext)), 'Ada Bex Ada Cleo')
+  assert.deepEqual(mergeStreams(ext, ext), mergeStreams(ext))
+  // A basic row of each artist stands for one of them, in either order.
+  const bas = [basic('2024-01-01T10:00:00Z', 10_000, 'Intro', 'Bex'), basic('2024-01-01T10:00:00Z', 10_000, 'Intro', 'Ada')]
+  assert.equal(mergeStreams(ext, bas).length, 4)
+  assert.equal(mergeStreams(bas, ext).length, 4)
+  assert.equal(names(mergeStreams(bas, bas)), 'Bex* Ada*')
+  // Minute cut or rounded up, and credited to another artist: still one play.
+  assert.equal(names(mergeStreams([x('2024-01-01T10:00:44Z', 5, 't', 'Various Artists')], [basic('2024-01-01T10:01:00Z', 5, 't', 'Ada')])), 'Various Artists')
+  assert.equal(mergeStreams([x('2024-01-01T10:00:44Z', 5, 't', 'Ada')], [basic('2024-01-01T10:02:00Z', 5, 't', 'Ada')]).length, 2)
+  // Two basic plays, one known to the extended request: the other stays, and stays once.
+  const two = [basic('2024-01-01T10:00:00Z', 45_000, 't', 'Ada'), basic('2024-01-01T10:01:00Z', 45_000, 't', 'Ada')], one = [x('2024-01-01T10:00:50Z', 45_000, 't', 'Ada')]
+  const m = mergeStreams(one, two)
+  assert.equal(names(m), 'Ada Ada*')
+  for (const again of [mergeStreams(m, two), mergeStreams(m, one), mergeStreams(two, one), mergeStreams(m, m)]) assert.deepEqual(again, m)
+  // A later request that relabels the URI or the artist name is the same play.
+  assert.equal(mergeStreams(one, [{ ...one[0], uri: 'spotify:track:relinked' }]).length, 1)
+  assert.equal(mergeStreams(one, [{ ...one[0], artist: 'ADA' }]).length, 1)
+})
+
 test('offline plays use offline_timestamp when ts is a later sync time', () => {
   const r = parseMany(FIX)
   const u = r.streams.find(s => s.track === 'Underpass')!

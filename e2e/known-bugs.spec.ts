@@ -72,14 +72,12 @@ test('#3 validity: one impossible row is skipped with a reason and does not brea
 })
 
 test('#4 merge: two artists with the same title in one minute are two streams', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await upload(page, { name: AUDIO, data: [play('2024-01-01T10:00:00Z', 10_000, 'Ada', 'Intro'), play('2024-01-01T10:00:20Z', 10_000, 'Bex', 'Intro')] })
   await expect(report(page)).toContainText('2 unique streams', { timeout: 10_000 })
 })
 
 test('#4 merge: a 20 second sound on repeat keeps every repeat', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await upload(page, { name: AUDIO, data: [0, 20, 39].map(s => play(`2024-01-01T10:00:${String(s).padStart(2, '0')}Z`, 20_000, 'Ada', 'Loop')) })
   await expect(report(page)).toContainText('3 unique streams', { timeout: 10_000 })

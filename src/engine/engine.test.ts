@@ -363,6 +363,11 @@ test('snapshots compare: what changed since the last request', () => {
   assert.ok(!JSON.stringify(b).includes('"ts"'), 'snapshots hold aggregates, not raw rows')
 })
 
+test('CSV text that looks like a formula is marked as text, numbers are not', () => {
+  assert.equal(toCsv(['=h'], [['=1+1'], ['+'], ['-'], ['@x'], ['\tx'], ['=A1,"b"'], [-5], [0], ['a=b'], ['']]), "'=h\n'=1+1\n'+\n'-\n'@x\n'\tx\n\"'=A1,\"\"b\"\"\"\n-5\n0\na=b\n\n")
+  assert.equal(toCsv(['a'], [['x\ry'], ['\r=1']]), 'a\n"x\ry"\n"\'\r=1"\n')
+})
+
 test('CSV escapes quotes, commas and newlines', () => {
   assert.equal(toCsv(['a', 'b'], [['x, y', 'say "hi"'], [1, null]]), 'a,b\n"x, y","say ""hi"""\n1,\n')
 })

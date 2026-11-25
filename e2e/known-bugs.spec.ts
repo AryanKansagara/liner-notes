@@ -70,7 +70,6 @@ test('#6 snapshot: the one saved by an import follows the rules in force', async
 })
 
 test('#7 csv: a title that starts like a formula is exported as text', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await importFiles(page, 1, { name: AUDIO, data: [play('2024-01-01T10:00:00Z', 3 * MIN, '+Band', '=HYPERLINK("http://example.com","x")')] })
   await section(page, 'Top lists')

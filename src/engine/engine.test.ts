@@ -430,6 +430,22 @@ test('snapshots compare: what changed since the last request', () => {
   assert.ok(!JSON.stringify(b).includes('"ts"'), 'snapshots hold aggregates, not raw rows')
 })
 
+test('snapshots compare: growth in the last month of the older one is expected, any other change is not', () => {
+  const at = (d: string, ms: number) => st(`${d}T12:00:00Z`, ms, 'A', 'x')
+  const snap = (...l: Stream[]) => snapshot(ctxOf(l), '1', 'x')
+  const a = snap(at('2023-12-05', 5 * MIN), at('2024-01-05', 5 * MIN), at('2024-02-03', 5 * MIN))
+  const changed = (...l: Stream[]) => compareSnapshots(a, snap(...l)).changedMonths
+  assert.deepEqual(changed(at('2023-12-05', 5 * MIN), at('2024-01-05', 5 * MIN), at('2024-02-03', 5 * MIN), at('2024-02-20', 9 * MIN)), [])
+  assert.deepEqual(changed(at('2023-12-05', 5 * MIN), at('2024-01-05', 5 * MIN), at('2024-02-03', 2 * MIN)), ['2024-02'])
+  assert.deepEqual(changed(at('2023-12-05', 8 * MIN), at('2024-01-05', 2 * MIN), at('2024-02-03', 9 * MIN)), ['2023-12', '2024-01'])
+})
+
+test('snapshots compare: months without listening are not new months of data', () => {
+  const list = [st('2024-01-05T12:00:00Z', 3 * MIN, 'A', 'x')]
+  const a = snapshot(ctxOf(list), '1', 'Jan'), b = snapshot(ctxOf([...list, st('2024-05-05T12:00:00Z', 3 * MIN, 'A', 'x')]), '2', 'May')
+  assert.deepEqual(compareSnapshots(a, b).newMonths, ['2024-05'])
+})
+
 test('CSV text that looks like a formula is marked as text, numbers are not', () => {
   assert.equal(toCsv(['=h'], [['=1+1'], ['+'], ['-'], ['@x'], ['\tx'], ['=A1,"b"'], [-5], [0], ['a=b'], ['']]), "'=h\n'=1+1\n'+\n'-\n'@x\n'\tx\n\"'=A1,\"\"b\"\"\"\n-5\n0\na=b\n\n")
   assert.equal(toCsv(['a'], [['x\ry'], ['\r=1']]), 'a\n"x\ry"\n"\'\r=1"\n')

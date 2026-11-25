@@ -237,7 +237,6 @@ test('#9 sessions: the longest one is dated by the local day', async ({ page }) 
 })
 
 test('#10 history: the unfinished last month of the older request is not reported as changed', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await importFiles(page, 10, { name: AUDIO, data: HAND }) // ends on 3 February
   await importFiles(page, 11, { name: AUDIO, data: [...HAND, play('2024-02-20T10:00:00Z', 5 * MIN, 'Ada', 'Alpha')] })

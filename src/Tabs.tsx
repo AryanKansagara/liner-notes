@@ -25,7 +25,6 @@ function Overview({ project, prep }: TabProps) {
     const cl = clock(ctx)
     return { t: totals(ctx), cl, peak: peakHour(cl), months: monthly(ctx), artists: top(ctx, 'artist', 'ms', 5), tracks: top(ctx, 'track', 'ms', 5), eras: eras(ctx), sugg: suggestRules(ctx, project.settings.rules), st: streaks(ctx) }
   }, [ctx, project.settings.rules])
-  if (!ctx.s.length) return <Empty title="Every stream is excluded"><p className="muted">Your exclusion rules hide the whole history. <Link href={`/app/p/${project.id}/fix`}>Review the rules</Link>.</p></Empty>
   const noisy = d.sugg.filter(s => s.rule.kind === 'keyword' || s.rule.kind === 'artist')
   const offRules = project.settings.rules.filter(r => !r.on).length && !project.settings.rules.some(r => r.on) ? project.settings.rules.length : 0
   return (

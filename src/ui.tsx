@@ -311,4 +311,7 @@ export function Empty({ title, children, icon }: { title: string; children?: Rea
   return <div className="empty">{icon ?? <div className="empty-icon" aria-hidden="true" />}<h3>{title}</h3>{children}</div>
 }
 
+/** Shown instead of statistics when no stream is left to count. */
+export const AllExcluded = ({ id }: { id: string }) => <Empty title="Every stream is excluded"><p className="muted">Your exclusion rules hide the whole history. <Link href={`/app/p/${id}/fix`}>Review the rules</Link>.</p></Empty>
+
 export const SyntheticBadge = () => <span className="badge synthetic" title="Generated data, not a real listener">Synthetic</span>

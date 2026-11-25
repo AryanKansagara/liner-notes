@@ -3,7 +3,7 @@ import { discovery, lostFavourites, monthsBetween, trackIndex, yearInReview } fr
 import { Heatmap } from './charts.tsx'
 import { lastYearStart, usePrepared, useProject } from './projectData.ts'
 import { reviewStartFromUrl } from './Review.tsx'
-import { DAYS, Empty, fmtDay, fmtHour, fmtN, fmtPct, fmtYm, Link, ThemeToggle } from './ui.tsx'
+import { AllExcluded, DAYS, Empty, fmtDay, fmtHour, fmtN, fmtPct, fmtYm, Link, ThemeToggle } from './ui.tsx'
 
 const mmss = (ms: number) => { const m = Math.round(ms / 60_000); return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} m` : `${m} m` }
 
@@ -24,6 +24,7 @@ export default function Booklet({ id }: { id: string }) {
   useEffect(() => { if (project) document.title = `Liner notes · ${project.name}` }, [project?.name])
 
   if (loading) return <div className="boot"><span className="spinner" /> Pressing the booklet</div>
+  if (project && ds?.length && !data) return <section className="page narrow"><AllExcluded id={id} /></section>
   if (!project || !data) return <section className="page narrow"><Empty title="Nothing to print yet"><Link href="/app" className="btn primary">Back to listeners</Link></Empty></section>
   const { r, lost, disc } = data
   const name = project.name.replace(/\s*\(synthetic\).*$/i, '')

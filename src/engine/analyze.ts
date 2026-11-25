@@ -32,6 +32,9 @@ export function tzOffset(ts: number, tz: string): number {
   return off
 }
 
+/** Local start time of a stream: the day, month and hour it counts towards. */
+export function startLoc(s: Pick<Stream, 'ts' | 'ms'>, tz: string) { const st = s.ts - s.ms; return st + tzOffset(st, tz) }
+
 /** Local wall-clock helpers. `loc` is local time expressed as if it were UTC. */
 export const ymOf = (loc: number) => { const d = new Date(loc); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}` }
 export const dayOf = (loc: number) => Math.floor(loc / DAY)
@@ -69,8 +72,7 @@ export function ruleMatches(s: Stream, r: Rule, tz = 'UTC'): boolean {
     case 'incognito': return !!s.incognito
     case 'podcasts': return isTalk(s)
     case 'dates': {
-      const start = s.ts - s.ms
-      const d = dateOf(dayOf(start + tzOffset(start, tz)))
+      const d = dateOf(dayOf(startLoc(s, tz)))
       return d >= r.value && d <= (r.to || r.value)
     }
   }
@@ -117,7 +119,7 @@ export interface Ctx {
 export function buildCtx(streams: Stream[], settings: Pick<Settings, 'minPlaySec' | 'tz' | 'sessionGapMin'>): Ctx {
   const s = streams.length < 2 || streams.every((x, i) => i === 0 || streams[i - 1].ts <= x.ts) ? streams : [...streams].sort((a, b) => a.ts - b.ts)
   const loc = new Float64Array(s.length)
-  for (let i = 0; i < s.length; i++) { const st = s[i].ts - s[i].ms; loc[i] = st + tzOffset(st, settings.tz) }
+  for (let i = 0; i < s.length; i++) loc[i] = startLoc(s[i], settings.tz)
   return { s, loc, minMs: settings.minPlaySec * 1000, gapMs: settings.sessionGapMin * 60_000, tz: settings.tz }
 }
 

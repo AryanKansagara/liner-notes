@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
+import { startLoc } from './engine/analyze.ts'
 import type { Settings, Stream } from './engine/types.ts'
 import { usePrepared, useProject, type Prepared } from './projectData.ts'
 import type { Project } from './store.ts'
@@ -60,7 +61,7 @@ export default function ProjectView({ id, tab: rawTab }: { id: string; tab: stri
         <div>
           <div className="eyebrow"><Link href="/app">Listeners</Link></div>
           <h1 className="row gap wrap">{project.name} {project.sampleId && <SyntheticBadge />}</h1>
-          {prep && !empty && <p className="muted small" style={{ margin: 0 }}>{fmtN(ds!.length)} streams · {fmtDate(ds![0].ts)} to {fmtDate(ds!.at(-1)!.ts)} · times in {project.settings.tz}</p>}
+          {prep && !empty && <p className="muted small" style={{ margin: 0 }}>{fmtN(ds!.length)} streams · {fmtDate(startLoc(ds![0], project.settings.tz))} to {fmtDate(startLoc(ds!.at(-1)!, project.settings.tz))} · times in {project.settings.tz}</p>}
         </div>
         {!empty && (
           <div className="toolbar">

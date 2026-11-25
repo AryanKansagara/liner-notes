@@ -185,7 +185,7 @@ function Rediscover({ prep }: TabProps) {
   const lost = useMemo(() => lostFavourites(index, endLoc, { quietDays: quiet, minPlays, n: 60 }), [index, endLoc, quiet, minPlays])
   const hits = useMemo(() => firstListens(index, q), [index, q])
   const ers = useMemo(() => eras(ctx), [ctx])
-  const csvLost = () => download('lost-favourites.csv', toCsv(['track', 'artist', 'plays', 'peak_month', 'last_played', 'days_since', 'uri'], lost.map(t => [t.name, t.artist, t.plays, t.peakMonth, new Date(t.last).toISOString().slice(0, 10), t.daysSince, t.uri])))
+  const csvLost = () => download('lost-favourites.csv', toCsv(['track', 'artist', 'plays', 'peak_month', 'last_played', 'days_since', 'uri'], lost.map(t => [t.name, t.artist, t.plays, t.peakMonth, dateOf(dayOf(t.lastLoc)), t.daysSince, t.uri])))
   return (
     <>
       <div className="panel">

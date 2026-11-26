@@ -94,7 +94,7 @@ export default function Docs() {
         <li><b>Peak month</b>: the month with the most plays of a track. <b>Lost favourites</b>: at least 10 plays, then none in the last 6 months of your data (both adjustable).</li>
         <li><b>Discovery rate</b>: artists played for the first time that month, divided by all artists played that month.</li>
         <li><b>Eras</b>: consecutive months whose top-10 artist mix stays similar (cosine similarity of minute shares). One-month blips fold into a neighbour.</li>
-        <li><b>Duplicates</b>: rows with the same end minute, ms played and title are one stream, so overlapping requests merge cleanly. The basic export cuts the end time to the minute, so a basic row also matches an extended row (with a URI) in the neighbouring minute; the extended row is kept.</li>
+        <li><b>Duplicates</b>: extended rows with the same end second, ms played and title (and artist or URI) are one stream, so overlapping requests merge cleanly. The basic export cuts the end time to the minute, so each basic row also matches one extended row in the same or a neighbouring minute; the extended row is kept.</li>
       </ul>
 
       <h2 id="wrapped">5. Why it differs from Wrapped</h2>

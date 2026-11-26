@@ -32,10 +32,43 @@ test('detects extended audio, video, basic music and podcast files', () => {
   assert.ok(!isHistoryName('MyData/Playlist1.json'))
 })
 
+test('a damaged first row does not hide the rest of the file', () => {
+  const ok = { ts: '2024-05-01T08:03:00Z', ms_played: 1000, master_metadata_track_name: 'x', master_metadata_album_artist_name: 'a' }
+  for (const bad of [null, {}, 'x', 5, [], { ts: '2024-05-01T08:03:00Z' }]) {
+    const r = parseFile('Streaming_History_Audio_2024.json', [bad, ok])
+    assert.deepEqual([r.kind, r.report.kept, r.report.skipped, r.issues[0].row], ['extended-audio', 1, 1, 1])
+  }
+  assert.equal(detectKind('StreamingHistory_music_0.json', [null, { endTime: '2024-01-01 10:00', msPlayed: 1 }]), 'basic-music')
+  for (const none of [[], [null], [{ a: 1 }, 'x'], {}, null, 'text', [[]]]) assert.equal(detectKind('Streaming_History_Audio_2024.json', none), 'ignored')
+})
+
 test('basic export timestamps are minute-precision UTC', () => {
   assert.equal(parseTs('2024-03-01 13:45'), Date.UTC(2024, 2, 1, 13, 45))
   assert.equal(parseTs('2024-03-01T13:45:10Z'), Date.UTC(2024, 2, 1, 13, 45, 10))
   assert.ok(Number.isNaN(parseTs('yesterday')))
+})
+
+test('times that are not a real moment are unreadable', () => {
+  for (const s of ['5', '', '01/02/2024', 'March 1 2024', '2024-03-01', '2024-03-01T13:45:10', '2024-02-30 10:00', '2023-02-29T10:00:00Z', '2024-13-01 10:00', '2024-00-10 10:00', '2024-01-00 10:00', '2024-01-01 24:00', '2024-01-01T10:60:00Z', '2024-01-01 10:00Z x', '+200000-01-01T00:00:00Z']) assert.ok(Number.isNaN(parseTs(s)), s)
+  for (const v of [null, undefined, 5, 1704103200000, {}]) assert.ok(Number.isNaN(parseTs(v)))
+  assert.equal(parseTs(' 2024-02-29T10:00:00Z '), Date.UTC(2024, 1, 29, 10))
+  assert.equal(parseTs('2024-03-01T13:45Z'), Date.UTC(2024, 2, 1, 13, 45))
+  assert.equal(parseTs('2024-03-01T13:45:10.250Z'), Date.UTC(2024, 2, 1, 13, 45, 10, 250))
+  assert.equal(parseTs('2024-03-01T13:45:10+02:00'), Date.UTC(2024, 2, 1, 11, 45, 10))
+  assert.equal(parseTs('2024-03-01 13:45:10'), Date.UTC(2024, 2, 1, 13, 45, 10))
+})
+
+test('play times and dates that cannot be real are skipped with a reason', () => {
+  const row = (ms_played: unknown, ts = '2024-05-01T08:03:00Z') => ({ ts, ms_played, master_metadata_track_name: 'x', master_metadata_album_artist_name: 'a' })
+  const why = (r: object) => { const p = parseFile('Streaming_History_Audio_2024.json', [r]); return p.streams.length ? p.streams[0].ms : p.issues[0].msg }
+  for (const v of [null, '', -1]) assert.equal(why(row(v)), 'ms_played is missing or negative')
+  for (const v of [true, [], {}, 'abc', '1e9', '1,000', '0x10', ' ', NaN]) assert.equal(why(row(v)), 'ms_played is not a number')
+  for (const v of [1e15, 1e300, '99999999999', 7 * 86_400_000 + 1]) assert.equal(why(row(v)), 'ms_played is longer than 7 days')
+  assert.deepEqual([0, 30_000, '30000', 12.5, 7 * 86_400_000].map(v => why(row(v))), [0, 30_000, 30_000, 12.5, 7 * 86_400_000])
+  for (const ts of ['0001-01-01T00:00:00Z', '1970-01-01T00:00:00Z', '2005-12-31T23:59:59Z', '9999-01-01T00:00:00Z', new Date(Date.now() + 3 * 86_400_000).toISOString()]) assert.match(String(why(row(1, ts))), /^Date before Spotify existed or in the future/)
+  assert.equal(why(row(1, new Date(Date.now() + 86_400_000).toISOString())), 1)
+  const b = parseFile('StreamingHistory_music_0.json', [{ endTime: '2024-01-01 10:00', artistName: 'a', trackName: 'x', msPlayed: null }, { endTime: '1999-01-01 10:00', artistName: 'a', trackName: 'x', msPlayed: 1 }])
+  assert.deepEqual(b.issues.map(i => i.msg), ['msPlayed is missing or negative', 'Date before Spotify existed or in the future "1999-01-01 10:00"'])
 })
 
 test('extended rows map tracks, episodes and keep reason, shuffle, skip and incognito fields', () => {
@@ -103,6 +136,31 @@ test('basic endTime cut to the minute still matches the extended row one minute 
 test('a short song on repeat is not collapsed by de-duplication', () => {
   const row = (ts: string) => ({ ts, ms_played: 45000, master_metadata_track_name: 'Wiggle', master_metadata_album_artist_name: 'Kids', spotify_track_uri: 'spotify:track:w' })
   assert.equal(parseMany([{ name: 'Streaming_History_Audio_2024.json', rows: [row('2024-05-01T08:00:50Z'), row('2024-05-01T08:01:35Z'), row('2024-05-01T08:02:20Z')] }]).streams.length, 3)
+})
+
+test('merging keeps different plays apart and adds nothing when a request is imported again', () => {
+  const x = (ts: string, ms: number, track: string, artist: string, uri = `spotify:track:${artist}${track}`): Stream => ({ ts: Date.parse(ts), ms, track, artist, album: '', uri, kind: 'track' })
+  const basic = (end: string, ms: number, track: string, artist: string) => x(end, ms, track, artist, '')
+  const names = (l: Stream[]) => l.map(s => `${s.artist}${s.uri ? '' : '*'}`).join(' ')
+  const ext = [x('2024-01-01T10:00:10Z', 10_000, 'Intro', 'Ada'), x('2024-01-01T10:00:30Z', 10_000, 'Intro', 'Bex'), x('2024-01-01T10:00:50Z', 10_000, 'Intro', 'Ada'), x('2024-01-01T10:00:50Z', 10_000, 'Intro', 'Cleo')]
+  assert.equal(names(mergeStreams(ext)), 'Ada Bex Ada Cleo')
+  assert.deepEqual(mergeStreams(ext, ext), mergeStreams(ext))
+  // A basic row of each artist stands for one of them, in either order.
+  const bas = [basic('2024-01-01T10:00:00Z', 10_000, 'Intro', 'Bex'), basic('2024-01-01T10:00:00Z', 10_000, 'Intro', 'Ada')]
+  assert.equal(mergeStreams(ext, bas).length, 4)
+  assert.equal(mergeStreams(bas, ext).length, 4)
+  assert.equal(names(mergeStreams(bas, bas)), 'Bex* Ada*')
+  // Minute cut or rounded up, and credited to another artist: still one play.
+  assert.equal(names(mergeStreams([x('2024-01-01T10:00:44Z', 5, 't', 'Various Artists')], [basic('2024-01-01T10:01:00Z', 5, 't', 'Ada')])), 'Various Artists')
+  assert.equal(mergeStreams([x('2024-01-01T10:00:44Z', 5, 't', 'Ada')], [basic('2024-01-01T10:02:00Z', 5, 't', 'Ada')]).length, 2)
+  // Two basic plays, one known to the extended request: the other stays, and stays once.
+  const two = [basic('2024-01-01T10:00:00Z', 45_000, 't', 'Ada'), basic('2024-01-01T10:01:00Z', 45_000, 't', 'Ada')], one = [x('2024-01-01T10:00:50Z', 45_000, 't', 'Ada')]
+  const m = mergeStreams(one, two)
+  assert.equal(names(m), 'Ada Ada*')
+  for (const again of [mergeStreams(m, two), mergeStreams(m, one), mergeStreams(two, one), mergeStreams(m, m)]) assert.deepEqual(again, m)
+  // A later request that relabels the URI or the artist name is the same play.
+  assert.equal(mergeStreams(one, [{ ...one[0], uri: 'spotify:track:relinked' }]).length, 1)
+  assert.equal(mergeStreams(one, [{ ...one[0], artist: 'ADA' }]).length, 1)
 })
 
 test('offline plays use offline_timestamp when ts is a later sync time', () => {

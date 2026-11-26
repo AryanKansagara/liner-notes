@@ -5,7 +5,6 @@ import { AUDIO, download, expect, HAND, importFiles, kpi, newListener, panel, pl
 const MIN = 60_000
 
 test('#2 storage: a history the browser refuses to store is not reported as imported', async ({ page }) => {
-  test.fail()
   await page.addInitScript(() => {
     const put = IDBObjectStore.prototype.put
     IDBObjectStore.prototype.put = function (...a: [unknown, IDBValidKey?]) {
@@ -19,46 +18,97 @@ test('#2 storage: a history the browser refuses to store is not reported as impo
   await expect(page.locator('.toast, .banner').first()).toBeVisible()
   await expect(page.getByText(/new streams added/)).toHaveCount(0, { timeout: 2000 })
   await expect(page.getByText(/could not be (saved|stored)/i).first()).toBeVisible({ timeout: 5000 })
+  await expect(report(page)).toBeVisible()
+  await expect(panel(page, 'Imports')).toHaveCount(0)
+  await section(page, 'History')
+  await expect(page.getByText('No snapshots yet')).toBeVisible()
+})
+
+test('#2 storage: a write aborted as it commits keeps the earlier history', async ({ page }) => {
+  await page.addInitScript(() => {
+    const put = IDBObjectStore.prototype.put
+    IDBObjectStore.prototype.put = function (...a: [unknown, IDBValidKey?]) {
+      const r = put.apply(this, a)
+      if (this.name === 'data' && (a[0] as unknown[]).length > 10) r.addEventListener('success', () => this.transaction.abort())
+      return r
+    }
+  })
+  await newListener(page)
+  await importFiles(page, 10, { name: AUDIO, data: HAND })
+  await upload(page, { name: AUDIO, data: [...HAND, play('2024-03-01T12:00:00Z', MIN, 'Eve', 'Echo')] })
+  await report(page).getByRole('button', { name: 'Add to this history' }).click()
+  await expect(page.getByText(/could not be stored/)).toBeVisible()
+  await expect(page.getByText('1 new streams added')).toHaveCount(0)
+  await page.reload()
+  await expect(panel(page, 'Imports').locator('tbody tr')).toHaveCount(1)
+  await expect(panel(page, 'Imports')).toContainText('10 streams on this device')
+})
+
+test('#2 storage: a rule the browser cannot keep is reported', async ({ page }) => {
+  await newListener(page)
+  await importFiles(page, 10, { name: AUDIO, data: HAND })
+  await page.evaluate(() => { IDBObjectStore.prototype.put = () => { throw new DOMException('full', 'QuotaExceededError') } })
+  await section(page, 'Top lists')
+  await page.locator('.toplist li').filter({ hasText: 'Gamma' }).getByRole('button', { name: 'Exclude' }).click()
+  await expect(page.getByText(/My history could not be saved/)).toBeVisible()
+})
+
+test('#2 storage: without a database the history still works until the page is closed', async ({ page }) => {
+  await page.addInitScript(() => { IDBFactory.prototype.open = () => { throw new DOMException('blocked', 'SecurityError') } })
+  await newListener(page)
+  await importFiles(page, 10, { name: AUDIO, data: HAND })
+  await section(page, 'Overview')
+  await expect(kpi(page, /^Plays/).locator('b')).toHaveText('7')
 })
 
 test('#3 validity: one impossible row is skipped with a reason and does not break the listener', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await upload(page, { name: AUDIO, data: [...HAND, { ...HAND[0], ms_played: 1e16 }, { ...HAND[1], ms_played: null }, { ...HAND[1], ts: '5' }] })
   await expect(report(page)).toContainText('3 rows skipped', { timeout: 10_000 })
+  await expect(report(page).locator('.issues > div')).toHaveText([/:11ms_played is longer than 7 days/, /:12ms_played is missing/, /:13Unreadable ts "5"/])
+  await report(page).getByRole('button', { name: 'Import' }).click()
+  await section(page, 'Overview')
+  await expect(kpi(page, /^Plays/).locator('b')).toHaveText('7')
 })
 
 test('#4 merge: two artists with the same title in one minute are two streams', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await upload(page, { name: AUDIO, data: [play('2024-01-01T10:00:00Z', 10_000, 'Ada', 'Intro'), play('2024-01-01T10:00:20Z', 10_000, 'Bex', 'Intro')] })
   await expect(report(page)).toContainText('2 unique streams', { timeout: 10_000 })
 })
 
 test('#4 merge: a 20 second sound on repeat keeps every repeat', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await upload(page, { name: AUDIO, data: [0, 20, 39].map(s => play(`2024-01-01T10:00:${String(s).padStart(2, '0')}Z`, 20_000, 'Ada', 'Loop')) })
   await expect(report(page)).toContainText('3 unique streams', { timeout: 10_000 })
 })
 
 test('#5 unreadable: a damaged history file among good ones is called out', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await upload(page, { name: AUDIO, data: HAND }, { name: 'Streaming_History_Audio_2023.json', data: '[{"ts":"2023-01' })
   await expect(report(page)).toBeVisible()
   await expect(report(page).locator('[role=alert]')).toContainText('Streaming_History_Audio_2023.json', { timeout: 5000 })
+  await expect(report(page)).not.toContainText('Ignored:')
+})
+
+test('#5 unreadable: every damaged file is named, unrelated files are not', async ({ page }) => {
+  await newListener(page)
+  const bad = Array.from({ length: 9 }, (_, i) => ({ name: `Streaming_History_Audio_${2010 + i}_${i}.json`, data: i % 2 ? '' : { error: 'x' } }))
+  await upload(page, { name: AUDIO, data: HAND }, ...bad, { name: 'notes.txt', data: 'x' }, { name: 'Playlist1.json', data: {} })
+  const warning = report(page).locator('[role=alert]')
+  await expect(warning).toContainText('9 files could not be read')
+  for (const b of bad) await expect(warning).toContainText(b.name)
+  await expect(warning).not.toContainText(/notes|Playlist/)
+  await expect(report(page)).toContainText('Ignored: notes.txt, Playlist1.json (not streaming history)')
 })
 
 test('#5 unreadable: a history file whose first row is damaged keeps its other rows', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await upload(page, { name: AUDIO, data: [null, ...HAND] })
   await expect(report(page)).toContainText('10 unique streams', { timeout: 10_000 })
 })
 
 test('#6 snapshot: the one saved by an import follows the rules in force', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await importFiles(page, 10, { name: AUDIO, data: HAND })
   await section(page, 'Top lists')
@@ -67,6 +117,29 @@ test('#6 snapshot: the one saved by an import follows the rules in force', async
   await importFiles(page, 10, { name: AUDIO, data: HAND })
   await section(page, 'History')
   await expect(panel(page, 'Snapshots').locator('tbody tr').first()).toContainText('Cleo', { timeout: 5000 })
+  // The same as a snapshot saved by hand: 10 streams less Ada's 4, 3 artists left.
+  const cells = (i: number) => panel(page, 'Snapshots').locator('tbody tr').nth(i).locator('td').allTextContents()
+  const imported = await cells(0)
+  expect(imported.slice(1, 4)).toEqual(['6', '1', '3'])
+  await page.getByRole('button', { name: 'Save a snapshot now' }).click()
+  await expect(panel(page, 'Snapshots').locator('tbody tr')).toHaveCount(3)
+  expect(await cells(0)).toEqual(imported)
+  await page.goto('/app')
+  await expect(page.locator('.project-card')).toContainText('Top artist Cleo')
+})
+
+test('#6 snapshot: rules that are off are not applied', async ({ page }) => {
+  await newListener(page)
+  await importFiles(page, 10, { name: AUDIO, data: HAND })
+  await section(page, 'Top lists')
+  await page.locator('.toplist li').filter({ hasText: 'Alpha' }).getByRole('button', { name: 'Exclude' }).click()
+  await section(page, 'Fix my Wrapped')
+  await page.locator('.rules li .switch').click()
+  await expect(page.locator('.rules li')).not.toHaveClass('on')
+  await section(page, 'Data')
+  await importFiles(page, 10, { name: AUDIO, data: HAND })
+  await section(page, 'History')
+  await expect(panel(page, 'Snapshots').locator('tbody tr')).toHaveText([/10.*1.*4.*Ada/, /10.*1.*4.*Ada/])
 })
 
 test('#7 csv: a title that starts like a formula is exported as text', async ({ page }) => {

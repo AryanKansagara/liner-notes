@@ -30,13 +30,15 @@ export const KIND_LABEL: Record<FileKind, string> = {
 
 const MAX_ISSUES = 300
 
-/** Decides what a file is from its name and the keys of its first object. */
+/** Decides what a file is from its name and the keys of its first row that has any of the known ones. */
 export function detectKind(name: string, rows: unknown): FileKind {
-  if (!Array.isArray(rows) || !rows.length || typeof rows[0] !== 'object' || rows[0] === null) return 'ignored'
-  const first = rows[0] as Record<string, unknown>
+  if (!Array.isArray(rows)) return 'ignored'
   const base = name.split('/').pop() ?? name
-  if ('ts' in first && 'ms_played' in first) return /video/i.test(base) ? 'extended-video' : 'extended-audio'
-  if ('endTime' in first && 'msPlayed' in first) return 'podcastName' in first || /podcast/i.test(base) ? 'basic-podcast' : 'basic-music'
+  for (const r of rows as unknown[]) {
+    if (typeof r !== 'object' || r === null) continue
+    if ('ts' in r && 'ms_played' in r) return /video/i.test(base) ? 'extended-video' : 'extended-audio'
+    if ('endTime' in r && 'msPlayed' in r) return 'podcastName' in r || /podcast/i.test(base) ? 'basic-podcast' : 'basic-music'
+  }
   return 'ignored'
 }
 
@@ -53,12 +55,31 @@ export const parseJson = (text: string): unknown => JSON.parse(text.replace(/^\u
 const str = (v: unknown) => typeof v === 'string' ? v.trim() : ''
 const bool = (v: unknown) => v === true || v === 'true' ? true : v === false || v === 'false' ? false : undefined
 
-/** Parses Spotify's timestamps. Extended: ISO with Z. Basic: "2024-03-01 13:45" in UTC. */
+/** Parses Spotify's timestamps, NaN for anything else. Extended: ISO with Z (or an offset). Basic: "2024-03-01 13:45" in UTC. */
 export function parseTs(v: unknown): number {
   if (typeof v !== 'string') return NaN
   const s = v.trim()
-  if (/^\d{4}-\d\d-\d\d \d\d:\d\d(:\d\d)?$/.test(s)) return Date.parse(s.replace(' ', 'T') + 'Z')
-  return Date.parse(s)
+  const m = /^(\d{4})-(\d\d)-(\d\d)(?:T(\d\d):(\d\d)(?::(\d\d)(?:\.\d+)?)?(?:Z|[+-]\d\d:?\d\d)| (\d\d):(\d\d)(?::(\d\d))?)$/.exec(s)
+  if (!m) return NaN
+  const [y, mo, d] = [+m[1], +m[2], +m[3]]
+  // Date.parse rolls 30 February over into March.
+  if (mo < 1 || mo > 12 || d < 1 || d > new Date(Date.UTC(y, mo, 0)).getUTCDate()) return NaN
+  if (+(m[4] ?? m[7]) > 23 || +(m[5] ?? m[8]) > 59 || +(m[6] ?? m[9] ?? 0) > 59) return NaN
+  return Date.parse(s.includes(' ') ? s.replace(' ', 'T') + 'Z' : s)
+}
+
+/** No single play lasts this long; a bigger value is damage and would put the start of the play outside any calendar. */
+const MAX_PLAY_MS = 7 * 86_400_000
+/** Spotify was founded in 2006. */
+const FIRST_TS = Date.UTC(2006, 0, 1)
+
+/** Milliseconds played, or the reason the value cannot be one. */
+function playMs(v: unknown, field: string): number | string {
+  if (v === undefined || v === null || v === '') return `${field} is missing or negative`
+  const ms = typeof v === 'number' ? v : typeof v === 'string' && /^\s*-?\d+(\.\d+)?\s*$/.test(v) ? Number(v) : NaN
+  if (!Number.isFinite(ms)) return `${field} is not a number`
+  if (ms < 0) return `${field} is missing or negative`
+  return ms > MAX_PLAY_MS ? `${field} is longer than 7 days` : ms
 }
 
 /**
@@ -89,6 +110,8 @@ export function parseFile(name: string, rows: unknown): { kind: FileKind; stream
   const list = Array.isArray(rows) ? rows : []
   if (kind === 'ignored') return { kind, streams, report: { file: name, kind, rows: list.length, kept: 0, skipped: 0 }, issues, issueCount, groups }
 
+  // Two days of slack for clocks and timezones.
+  const latest = Date.now() + 2 * 86_400_000
   let skipped = 0, from = Infinity, to = -Infinity
   list.forEach((raw, i) => {
     const row = i + 1
@@ -96,10 +119,11 @@ export function parseFile(name: string, rows: unknown): { kind: FileKind; stream
     const r = raw as Record<string, unknown>
     let s: Stream | null = null
     if (kind === 'extended-audio' || kind === 'extended-video') {
-      const ms = Number(r.ms_played)
+      const ms = playMs(r.ms_played, 'ms_played')
       let ts = parseTs(r.ts)
       if (!Number.isFinite(ts)) { skipped++; push(row, 'error', `Unreadable ts "${String(r.ts)}"`); return }
-      if (!Number.isFinite(ms) || ms < 0) { skipped++; push(row, 'error', 'ms_played is missing or negative'); return }
+      if (ts < FIRST_TS || ts > latest) { skipped++; push(row, 'error', `Date before Spotify existed or in the future "${String(r.ts)}"`); return }
+      if (typeof ms === 'string') { skipped++; push(row, 'error', ms); return }
       ts = offlineEnd(ts, ms, r.offline, r.offline_timestamp)
       const trackName = str(r.master_metadata_track_name), ep = str(r.episode_name), book = str(r.audiobook_chapter_title) || str(r.audiobook_title)
       let k: Kind, track: string, artist: string, album: string, uri: string
@@ -121,9 +145,10 @@ export function parseFile(name: string, rows: unknown): { kind: FileKind; stream
       if (p) s.platform = p
     } else {
       const ts = parseTs(r.endTime)
-      const ms = Number(r.msPlayed)
+      const ms = playMs(r.msPlayed, 'msPlayed')
       if (!Number.isFinite(ts)) { skipped++; push(row, 'error', `Unreadable endTime "${String(r.endTime)}"`); return }
-      if (!Number.isFinite(ms) || ms < 0) { skipped++; push(row, 'error', 'msPlayed is missing or negative'); return }
+      if (ts < FIRST_TS || ts > latest) { skipped++; push(row, 'error', `Date before Spotify existed or in the future "${String(r.endTime)}"`); return }
+      if (typeof ms === 'string') { skipped++; push(row, 'error', ms); return }
       if (kind === 'basic-music') {
         const track = str(r.trackName)
         if (!track) { skipped++; push(row, 'warn', 'Empty trackName'); return }
@@ -143,22 +168,58 @@ export function parseFile(name: string, rows: unknown): { kind: FileKind; stream
   return { kind, streams, report, issues, issueCount, groups }
 }
 
+const MINUTE = 60_000
+/** Rows of the basic export have no URI and an end time cut to the minute. */
+const isBasic = (s: Stream) => !s.uri && s.ts % MINUTE === 0
+
 /**
- * Merges stream lists, preferring rows with more detail (URIs) when the same play appears twice. Sorted by ts.
- * The basic export cuts endTime to the minute, so a basic row (no URI) also matches an extended row (with URI)
- * in the neighbouring minute. Two rows of the same kind only match in the same minute, so a short song on
- * repeat is not collapsed.
+ * Merges stream lists and drops repeats, sorted by ts.
+ * Extended rows know the second they ended: same second, ms and title, by the same artist or with the same URI, is one play.
+ * The basic export cuts endTime to the minute, so a basic row stands for one extended row with its ms and title in the
+ * same or a neighbouring minute, and the extended row is kept. The two exports can credit the artist differently, so an equal
+ * artist is preferred but not required. Basic rows only repeat each other when minute, ms, title and artist are all equal.
+ * A list that holds both kinds is an earlier merge: its basic rows were already found to be plays of their own there.
  */
 export function mergeStreams(...lists: Stream[][]): Stream[] {
-  const map = new Map<string, Stream>()
-  for (const list of lists) for (const s of list) {
-    const m = Math.floor(s.ts / 60000), rest = `|${s.ms}|${s.track}`
-    let k = m + rest
-    if (!map.has(k)) for (const n of [m - 1, m + 1]) { const prev = map.get(n + rest); if (prev && !prev.uri !== !s.uri) { k = n + rest; break } }
-    const prev = map.get(k)
-    if (!prev || (!prev.uri && s.uri)) map.set(k, s)
+  const full = new Map<string, Stream[]>(), basic = new Map<string, Stream>()
+  // Which earlier merges a row came from, so its basic rows are not matched to extended rows of the same merge.
+  const seen = new Map<Stream, Set<Stream[]>>()
+  for (const list of lists) {
+    const merged = list.some(isBasic) && !list.every(isBasic)
+    const mark = (s: Stream) => { if (!merged) return; const l = seen.get(s); if (l) l.add(list); else seen.set(s, new Set([list])) }
+    for (const s of list) {
+      const k = `${s.ts}|${s.ms}|${s.track}`
+      if (isBasic(s)) {
+        const b = `${k}|${s.artist}`
+        if (!basic.has(b)) basic.set(b, s)
+        mark(basic.get(b)!)
+        continue
+      }
+      const same = full.get(k)
+      if (!same) { full.set(k, [s]); mark(s); continue }
+      const i = same.findIndex(p => p.artist === s.artist || (!!p.uri && p.uri === s.uri))
+      if (i < 0) same.push(s)
+      else if (!same[i].uri && s.uri) { const l = seen.get(same[i]); if (l) seen.set(s, new Set(l)); same[i] = s }
+      mark(i < 0 ? s : same[i])
+    }
   }
-  return [...map.values()].sort((a, b) => a.ts - b.ts)
+  const apart = (a: Stream, b: Stream) => { const l = seen.get(a), m = seen.get(b); return !!l && !!m && [...l].some(x => m.has(x)) }
+  const out = [...full.values()].flat()
+  if (basic.size) {
+    const byMinute = new Map<string, Stream[]>()
+    for (const s of out) { const k = `${Math.floor(s.ts / MINUTE)}|${s.ms}|${s.track}`; const l = byMinute.get(k); if (l) l.push(s); else byMinute.set(k, [s]) }
+    const taken = new Set<Stream>()
+    let left = [...basic.values()]
+    for (const sameArtist of [true, false]) for (const offsets of [[0], [-1, 1]]) left = left.filter(b => {
+      for (const o of offsets) {
+        const hit = byMinute.get(`${b.ts / MINUTE + o}|${b.ms}|${b.track}`)?.find(x => !taken.has(x) && (!sameArtist || x.artist === b.artist) && !apart(b, x))
+        if (hit) { taken.add(hit); return false }
+      }
+      return true
+    })
+    for (const b of left) out.push(b)
+  }
+  return out.sort((a, b) => a.ts - b.ts)
 }
 
 export function parseMany(files: { name: string; rows: unknown }[]): ParseResult {

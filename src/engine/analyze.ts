@@ -281,6 +281,7 @@ export function peakHour(cl: number[]) {
 
 // ---------- Sessions ----------
 
+/** `start` and `end` are instants, so a clock change inside a session does not alter its length. */
 export interface Session { start: number; end: number; ms: number; n: number }
 
 export function sessions(ctx: Ctx): Session[] {
@@ -289,8 +290,8 @@ export function sessions(ctx: Ctx): Session[] {
   let curEnd = 0
   for (let i = 0; i < ctx.s.length; i++) {
     const s = ctx.s[i]
-    const start = ctx.loc[i]
-    const end = start + s.ms
+    const start = s.ts - s.ms
+    const end = s.ts
     if (!cur || start - curEnd > ctx.gapMs) {
       cur = { start, end, ms: 0, n: 0 }
       out.push(cur)

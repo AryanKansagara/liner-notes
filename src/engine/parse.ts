@@ -30,13 +30,15 @@ export const KIND_LABEL: Record<FileKind, string> = {
 
 const MAX_ISSUES = 300
 
-/** Decides what a file is from its name and the keys of its first object. */
+/** Decides what a file is from its name and the keys of its first row that has any of the known ones. */
 export function detectKind(name: string, rows: unknown): FileKind {
-  if (!Array.isArray(rows) || !rows.length || typeof rows[0] !== 'object' || rows[0] === null) return 'ignored'
-  const first = rows[0] as Record<string, unknown>
+  if (!Array.isArray(rows)) return 'ignored'
   const base = name.split('/').pop() ?? name
-  if ('ts' in first && 'ms_played' in first) return /video/i.test(base) ? 'extended-video' : 'extended-audio'
-  if ('endTime' in first && 'msPlayed' in first) return 'podcastName' in first || /podcast/i.test(base) ? 'basic-podcast' : 'basic-music'
+  for (const r of rows as unknown[]) {
+    if (typeof r !== 'object' || r === null) continue
+    if ('ts' in r && 'ms_played' in r) return /video/i.test(base) ? 'extended-video' : 'extended-audio'
+    if ('endTime' in r && 'msPlayed' in r) return 'podcastName' in r || /podcast/i.test(base) ? 'basic-podcast' : 'basic-music'
+  }
   return 'ignored'
 }
 

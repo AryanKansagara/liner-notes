@@ -7,7 +7,7 @@ import { fmtRequest } from './projectData.ts'
 import { putData, uuid, type Project } from './store.ts'
 import { ask, fmtDate, fmtN, Link, toast } from './ui.tsx'
 
-type Pending = { result: ParseResult; ignored: string[]; names: string[] }
+type Pending = { result: ParseResult; unreadable: string[]; ignored: string[]; names: string[] }
 
 export default function Import({ project, ds, update }: { project: Project; ds: Stream[]; update(p: Partial<Project>): Promise<boolean> }) {
   const [over, setOver] = useState(false)
@@ -27,8 +27,8 @@ export default function Import({ project, ds, update }: { project: Project; ds: 
       else {
         w.terminate(); setBusy(null)
         if (m.type === 'error') setErr(`Could not read the files: ${m.message}`)
-        else if (!m.result.streams.length) setErr((m.result.files.some(f => f.kind !== 'ignored') ? 'No playable streams found in these files.' : 'No streaming history files found. Look for Streaming_History_Audio_*.json (extended) or StreamingHistory_music_*.json (account data).') + (m.ignored.length ? ` Ignored: ${m.ignored.slice(0, 6).join(', ')}` : ''))
-        else setPending({ result: m.result, ignored: m.ignored, names: files.map(f => f.name) })
+        else if (!m.result.streams.length) setErr((m.result.files.some(f => f.kind !== 'ignored') ? 'No playable streams found in these files.' : 'No streaming history files found. Look for Streaming_History_Audio_*.json (extended) or StreamingHistory_music_*.json (account data).') + (m.unreadable.length || m.ignored.length ? ` Ignored: ${[...m.unreadable, ...m.ignored.slice(0, 6)].join(', ')}` : ''))
+        else setPending({ result: m.result, unreadable: m.unreadable, ignored: m.ignored, names: files.map(f => f.name) })
       }
     }
     w.onerror = e => { w.terminate(); setBusy(null); setErr(`The parser crashed: ${e.message}. Very large files may need a desktop browser.`) }
@@ -89,6 +89,7 @@ export default function Import({ project, ds, update }: { project: Project; ds: 
             ))}</tbody>
           </table></div>
           {pending.result.files.some(f => f.kind === 'basic-music') && !pending.result.files.some(f => f.kind === 'extended-audio') && <div className="banner small">This is the basic Account data export: one year, no URIs, no skip or shuffle fields. Request <b>Extended streaming history</b> for your full history and rediscovery playlists.</div>}
+          {pending.unreadable.length > 0 && <div className="banner warn" role="alert"><span><b>{pending.unreadable.length === 1 ? 'One file' : `${fmtN(pending.unreadable.length)} files`} could not be read</b>, so the listening inside is missing from this import: {pending.unreadable.map(n => n.split('/').pop()).join(', ')}. Extract or download the export again.</span></div>}
           {pending.result.issueCount > 0 && (
             <>
               <h3>{fmtN(pending.result.issueCount)} row{pending.result.issueCount > 1 ? 's' : ''} skipped</h3>

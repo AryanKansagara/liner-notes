@@ -38,6 +38,29 @@ test('basic export timestamps are minute-precision UTC', () => {
   assert.ok(Number.isNaN(parseTs('yesterday')))
 })
 
+test('times that are not a real moment are unreadable', () => {
+  for (const s of ['5', '', '01/02/2024', 'March 1 2024', '2024-03-01', '2024-03-01T13:45:10', '2024-02-30 10:00', '2023-02-29T10:00:00Z', '2024-13-01 10:00', '2024-00-10 10:00', '2024-01-00 10:00', '2024-01-01 24:00', '2024-01-01T10:60:00Z', '2024-01-01 10:00Z x', '+200000-01-01T00:00:00Z']) assert.ok(Number.isNaN(parseTs(s)), s)
+  for (const v of [null, undefined, 5, 1704103200000, {}]) assert.ok(Number.isNaN(parseTs(v)))
+  assert.equal(parseTs(' 2024-02-29T10:00:00Z '), Date.UTC(2024, 1, 29, 10))
+  assert.equal(parseTs('2024-03-01T13:45Z'), Date.UTC(2024, 2, 1, 13, 45))
+  assert.equal(parseTs('2024-03-01T13:45:10.250Z'), Date.UTC(2024, 2, 1, 13, 45, 10, 250))
+  assert.equal(parseTs('2024-03-01T13:45:10+02:00'), Date.UTC(2024, 2, 1, 11, 45, 10))
+  assert.equal(parseTs('2024-03-01 13:45:10'), Date.UTC(2024, 2, 1, 13, 45, 10))
+})
+
+test('play times and dates that cannot be real are skipped with a reason', () => {
+  const row = (ms_played: unknown, ts = '2024-05-01T08:03:00Z') => ({ ts, ms_played, master_metadata_track_name: 'x', master_metadata_album_artist_name: 'a' })
+  const why = (r: object) => { const p = parseFile('Streaming_History_Audio_2024.json', [r]); return p.streams.length ? p.streams[0].ms : p.issues[0].msg }
+  for (const v of [null, '', -1]) assert.equal(why(row(v)), 'ms_played is missing or negative')
+  for (const v of [true, [], {}, 'abc', '1e9', '1,000', '0x10', ' ', NaN]) assert.equal(why(row(v)), 'ms_played is not a number')
+  for (const v of [1e15, 1e300, '99999999999', 7 * 86_400_000 + 1]) assert.equal(why(row(v)), 'ms_played is longer than 7 days')
+  assert.deepEqual([0, 30_000, '30000', 12.5, 7 * 86_400_000].map(v => why(row(v))), [0, 30_000, 30_000, 12.5, 7 * 86_400_000])
+  for (const ts of ['0001-01-01T00:00:00Z', '1970-01-01T00:00:00Z', '2005-12-31T23:59:59Z', '9999-01-01T00:00:00Z', new Date(Date.now() + 3 * 86_400_000).toISOString()]) assert.match(String(why(row(1, ts))), /^Date before Spotify existed or in the future/)
+  assert.equal(why(row(1, new Date(Date.now() + 86_400_000).toISOString())), 1)
+  const b = parseFile('StreamingHistory_music_0.json', [{ endTime: '2024-01-01 10:00', artistName: 'a', trackName: 'x', msPlayed: null }, { endTime: '1999-01-01 10:00', artistName: 'a', trackName: 'x', msPlayed: 1 }])
+  assert.deepEqual(b.issues.map(i => i.msg), ['msPlayed is missing or negative', 'Date before Spotify existed or in the future "1999-01-01 10:00"'])
+})
+
 test('extended rows map tracks, episodes and keep reason, shuffle, skip and incognito fields', () => {
   const rows = [
     { ts: '2024-05-01T08:03:00Z', ms_played: 200000, conn_country: 'PT', master_metadata_track_name: 'Song', master_metadata_album_artist_name: 'Band', master_metadata_album_album_name: 'Album', spotify_track_uri: 'spotify:track:abc', reason_start: 'clickrow', reason_end: 'trackdone', shuffle: true, skipped: false, incognito_mode: true, ip_addr: '1.2.3.4' },

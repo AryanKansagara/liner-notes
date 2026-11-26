@@ -166,22 +166,58 @@ export function parseFile(name: string, rows: unknown): { kind: FileKind; stream
   return { kind, streams, report, issues, issueCount, groups }
 }
 
+const MINUTE = 60_000
+/** Rows of the basic export have no URI and an end time cut to the minute. */
+const isBasic = (s: Stream) => !s.uri && s.ts % MINUTE === 0
+
 /**
- * Merges stream lists, preferring rows with more detail (URIs) when the same play appears twice. Sorted by ts.
- * The basic export cuts endTime to the minute, so a basic row (no URI) also matches an extended row (with URI)
- * in the neighbouring minute. Two rows of the same kind only match in the same minute, so a short song on
- * repeat is not collapsed.
+ * Merges stream lists and drops repeats, sorted by ts.
+ * Extended rows know the second they ended: same second, ms and title, by the same artist or with the same URI, is one play.
+ * The basic export cuts endTime to the minute, so a basic row stands for one extended row with its ms and title in the
+ * same or a neighbouring minute, and the extended row is kept. The two exports can credit the artist differently, so an equal
+ * artist is preferred but not required. Basic rows only repeat each other when minute, ms, title and artist are all equal.
+ * A list that holds both kinds is an earlier merge: its basic rows were already found to be plays of their own there.
  */
 export function mergeStreams(...lists: Stream[][]): Stream[] {
-  const map = new Map<string, Stream>()
-  for (const list of lists) for (const s of list) {
-    const m = Math.floor(s.ts / 60000), rest = `|${s.ms}|${s.track}`
-    let k = m + rest
-    if (!map.has(k)) for (const n of [m - 1, m + 1]) { const prev = map.get(n + rest); if (prev && !prev.uri !== !s.uri) { k = n + rest; break } }
-    const prev = map.get(k)
-    if (!prev || (!prev.uri && s.uri)) map.set(k, s)
+  const full = new Map<string, Stream[]>(), basic = new Map<string, Stream>()
+  // Which earlier merges a row came from, so its basic rows are not matched to extended rows of the same merge.
+  const seen = new Map<Stream, Set<Stream[]>>()
+  for (const list of lists) {
+    const merged = list.some(isBasic) && !list.every(isBasic)
+    const mark = (s: Stream) => { if (!merged) return; const l = seen.get(s); if (l) l.add(list); else seen.set(s, new Set([list])) }
+    for (const s of list) {
+      const k = `${s.ts}|${s.ms}|${s.track}`
+      if (isBasic(s)) {
+        const b = `${k}|${s.artist}`
+        if (!basic.has(b)) basic.set(b, s)
+        mark(basic.get(b)!)
+        continue
+      }
+      const same = full.get(k)
+      if (!same) { full.set(k, [s]); mark(s); continue }
+      const i = same.findIndex(p => p.artist === s.artist || (!!p.uri && p.uri === s.uri))
+      if (i < 0) same.push(s)
+      else if (!same[i].uri && s.uri) { const l = seen.get(same[i]); if (l) seen.set(s, new Set(l)); same[i] = s }
+      mark(i < 0 ? s : same[i])
+    }
   }
-  return [...map.values()].sort((a, b) => a.ts - b.ts)
+  const apart = (a: Stream, b: Stream) => { const l = seen.get(a), m = seen.get(b); return !!l && !!m && [...l].some(x => m.has(x)) }
+  const out = [...full.values()].flat()
+  if (basic.size) {
+    const byMinute = new Map<string, Stream[]>()
+    for (const s of out) { const k = `${Math.floor(s.ts / MINUTE)}|${s.ms}|${s.track}`; const l = byMinute.get(k); if (l) l.push(s); else byMinute.set(k, [s]) }
+    const taken = new Set<Stream>()
+    let left = [...basic.values()]
+    for (const sameArtist of [true, false]) for (const offsets of [[0], [-1, 1]]) left = left.filter(b => {
+      for (const o of offsets) {
+        const hit = byMinute.get(`${b.ts / MINUTE + o}|${b.ms}|${b.track}`)?.find(x => !taken.has(x) && (!sameArtist || x.artist === b.artist) && !apart(b, x))
+        if (hit) { taken.add(hit); return false }
+      }
+      return true
+    })
+    for (const b of left) out.push(b)
+  }
+  return out.sort((a, b) => a.ts - b.ts)
 }
 
 export function parseMany(files: { name: string; rows: unknown }[]): ParseResult {

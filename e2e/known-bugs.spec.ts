@@ -109,7 +109,6 @@ test('#5 unreadable: a history file whose first row is damaged keeps its other r
 })
 
 test('#6 snapshot: the one saved by an import follows the rules in force', async ({ page }) => {
-  test.fail()
   await newListener(page)
   await importFiles(page, 10, { name: AUDIO, data: HAND })
   await section(page, 'Top lists')
@@ -118,6 +117,29 @@ test('#6 snapshot: the one saved by an import follows the rules in force', async
   await importFiles(page, 10, { name: AUDIO, data: HAND })
   await section(page, 'History')
   await expect(panel(page, 'Snapshots').locator('tbody tr').first()).toContainText('Cleo', { timeout: 5000 })
+  // The same as a snapshot saved by hand: 10 streams less Ada's 4, 3 artists left.
+  const cells = (i: number) => panel(page, 'Snapshots').locator('tbody tr').nth(i).locator('td').allTextContents()
+  const imported = await cells(0)
+  expect(imported.slice(1, 4)).toEqual(['6', '1', '3'])
+  await page.getByRole('button', { name: 'Save a snapshot now' }).click()
+  await expect(panel(page, 'Snapshots').locator('tbody tr')).toHaveCount(3)
+  expect(await cells(0)).toEqual(imported)
+  await page.goto('/app')
+  await expect(page.locator('.project-card')).toContainText('Top artist Cleo')
+})
+
+test('#6 snapshot: rules that are off are not applied', async ({ page }) => {
+  await newListener(page)
+  await importFiles(page, 10, { name: AUDIO, data: HAND })
+  await section(page, 'Top lists')
+  await page.locator('.toplist li').filter({ hasText: 'Alpha' }).getByRole('button', { name: 'Exclude' }).click()
+  await section(page, 'Fix my Wrapped')
+  await page.locator('.rules li .switch').click()
+  await expect(page.locator('.rules li')).not.toHaveClass('on')
+  await section(page, 'Data')
+  await importFiles(page, 10, { name: AUDIO, data: HAND })
+  await section(page, 'History')
+  await expect(panel(page, 'Snapshots').locator('tbody tr')).toHaveText([/10.*1.*4.*Ada/, /10.*1.*4.*Ada/])
 })
 
 test('#7 csv: a title that starts like a formula is exported as text', async ({ page }) => {

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { buildCtx, snapshot } from './engine/analyze.ts'
+import { prepare, snapshot } from './engine/analyze.ts'
 import { KIND_LABEL, mergeStreams, type ParseResult } from './engine/parse.ts'
 import type { Stream } from './engine/types.ts'
 import type { WorkerOut } from './parse.worker.ts'
@@ -44,7 +44,7 @@ export default function Import({ project, ds, update }: { project: Project; ds: 
       setErr(`This history could not be stored: the browser refused to save ${fmtN(merged.length)} streams, usually because the disk or this site's storage is full. Nothing was imported and the history you had is unchanged. Free up some space, then try again.`)
       return
     }
-    const ctx = buildCtx(merged, project.settings)
+    const { ctx } = prepare(merged, project.settings)
     const at = Date.now()
     const snap = snapshot(ctx, uuid(), fmtRequest(at), at)
     const meta = { id: uuid(), files: pending.names, rows: pending.result.streams.length, added: merged.length - before, skipped: pending.result.files.reduce((a, f) => a + f.skipped, 0), at }

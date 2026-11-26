@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { Snapshot } from './engine/analyze.ts'
-import type { Settings, Stream } from './engine/types.ts'
+import type { Rule, Settings, Stream } from './engine/types.ts'
 
 export type Dataset = Stream[]
 
@@ -106,17 +106,27 @@ export const saveProject = async (p: Project, opts: { touch?: boolean; silent?: 
 /** Like saveProject, and says whether the browser stored it. */
 export async function trySaveProject(p: Project, opts: { touch?: boolean; silent?: boolean } = {}) {
   const next = opts.touch === false ? p : { ...p, updatedAt: Date.now() }
-  let saved = true
-  try { await idbPut('projects', next) } catch { saved = false }
+  // The list changes before the write, so an edit made meanwhile starts from this one.
   const i = projects.findIndex(x => x.id === p.id)
   if (i >= 0) projects[i] = next
   else projects.unshift(next)
   projects.sort((a, b) => b.updatedAt - a.updatedAt)
   emit()
+  let saved = true
+  try { await idbPut('projects', next) } catch { saved = false }
   if (!opts.silent) changeHooks.forEach(f => f(next))
   if (!saved) saveErrorHooks.forEach(f => f(next))
   return { project: next, saved }
 }
+
+/** Changes part of the project as it is now, not as it was when the caller last saw it. A deleted project stays deleted. */
+export async function editProject(id: string, change: (p: Project) => Partial<Project>): Promise<boolean> {
+  const p = getProject(id)
+  return !!p && (await trySaveProject({ ...p, ...change(p) })).saved
+}
+
+/** Like editProject, for the rules. */
+export const editRules = (id: string, change: (rules: Rule[]) => Rule[]) => editProject(id, p => ({ settings: { ...p.settings, rules: change(p.settings.rules) } }))
 
 /** Deletes locally; returns an undo function that restores the project and its data. */
 export async function deleteProject(id: string): Promise<() => Promise<void>> {

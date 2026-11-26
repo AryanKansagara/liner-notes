@@ -19,7 +19,7 @@ export interface TabProps {
   prep: Prepared
   setSettings(p: Partial<Settings>): void
   /** Resolves to whether the browser stored the change */
-  update(p: Partial<Project>): Promise<boolean>
+  update(change: (p: Project) => Partial<Project>): Promise<boolean>
 }
 
 export default function ProjectView({ id, tab: rawTab }: { id: string; tab: string }) {

@@ -4,7 +4,7 @@ import type { Rule, RuleKind } from './engine/types.ts'
 import { Heatmap, TopList } from './charts.tsx'
 import type { TabProps } from './Project.tsx'
 import { addRule } from './projectData.ts'
-import { uuid } from './store.ts'
+import { editRules, uuid } from './store.ts'
 import { DAYS, fmtHour, fmtHours, fmtN, toast } from './ui.tsx'
 
 const KIND_LABEL: Record<RuleKind, string> = { artist: 'Artist', track: 'Track', keyword: 'Keyword', dates: 'Date range', incognito: 'Private sessions', podcasts: 'Podcasts & audiobooks' }
@@ -25,10 +25,11 @@ export default function Fix({ project, ds, prep, setSettings }: TabProps) {
   const sugg = useMemo(() => suggestRules(base, s.rules), [base, s.rules])
   const reach = useMemo(() => Object.fromEntries(s.rules.map(r => [r.id, ruleReach(ds, { ...r, on: true }, s.tz, s.minPlaySec * 1000)])), [ds, s.rules, s.tz, s.minPlaySec])
 
-  const setRules = (rules: Rule[], msg?: string) => {
-    const prev = s.rules
-    setSettings({ rules })
-    if (msg) toast(msg, { undo: () => setSettings({ rules: prev }) })
+  const setRules = (change: (rules: Rule[]) => Rule[]) => void editRules(project.id, change)
+  const removeRule = (rule: Rule, at: number) => {
+    setRules(rules => rules.filter(r => r.id !== rule.id))
+    const same = (r: Rule) => r.id === rule.id || (r.kind === rule.kind && r.value.toLowerCase() === rule.value.toLowerCase() && r.to === rule.to)
+    toast(`Removed rule: ${describeRule(rule)}`, { undo: () => setRules(rules => rules.some(same) ? rules : rules.toSpliced(at, 0, rule)) })
   }
 
   const [kind, setKind] = useState<RuleKind>('keyword')
@@ -46,7 +47,7 @@ export default function Fix({ project, ds, prep, setSettings }: TabProps) {
       if (!t) { toast('Pick a track from the list', { tone: 'error' }); return }
       rule.value = t.key; rule.label = `${t.name} (${t.sub})`
     }
-    setRules([...s.rules, rule])
+    setRules(rules => [...rules, rule])
     toast(`Excluding ${describeRule(rule)}`, { tone: 'ok' })
     setValue(''); setTo('')
   }
@@ -86,12 +87,12 @@ export default function Fix({ project, ds, prep, setSettings }: TabProps) {
         <div className="panel-head"><h2>Exclusion rules</h2><span className="muted small">Every chart, list, card and booklet recomputes without these streams</span></div>
         {s.rules.length ? (
           <ul className="rules">
-            {s.rules.map(r => (
+            {s.rules.map((r, i) => (
               <li key={r.id} className={r.on ? 'on' : ''}>
-                <label className="switch" title={r.on ? 'Turn off' : 'Turn on'}><input type="checkbox" checked={r.on} aria-label={`${r.on ? 'Disable' : 'Enable'} rule ${describeRule(r)}`} onChange={() => setRules(s.rules.map(x => x.id === r.id ? { ...x, on: !x.on } : x))} /><span /></label>
+                <label className="switch" title={r.on ? 'Turn off' : 'Turn on'}><input type="checkbox" checked={r.on} aria-label={`${r.on ? 'Disable' : 'Enable'} rule ${describeRule(r)}`} onChange={() => setRules(rules => rules.map(x => x.id === r.id ? { ...x, on: !x.on } : x))} /><span /></label>
                 <span className="kind">{KIND_LABEL[r.kind]}</span>
                 <span className="grow"><b>{describeRule(r)}</b><small className="muted block">matches {fmtN(reach[r.id]?.streams ?? 0)} streams · {fmtHours(reach[r.id]?.ms ?? 0)}{r.on && prep.impact[r.id] && prep.impact[r.id].streams < (reach[r.id]?.streams ?? 0) ? ` (${fmtN(prep.impact[r.id].streams)} not already caught by an earlier rule)` : ''}</small></span>
-                <button type="button" className="btn danger-ghost sm" onClick={() => setRules(s.rules.filter(x => x.id !== r.id), `Removed rule: ${describeRule(r)}`)}>Remove</button>
+                <button type="button" className="btn danger-ghost sm" onClick={() => removeRule(r, i)}>Remove</button>
               </li>
             ))}
           </ul>

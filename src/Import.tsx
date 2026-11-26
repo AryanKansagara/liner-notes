@@ -9,7 +9,7 @@ import { ask, fmtDate, fmtN, Link, toast } from './ui.tsx'
 
 type Pending = { result: ParseResult; unreadable: string[]; ignored: string[]; names: string[] }
 
-export default function Import({ project, ds, update }: { project: Project; ds: Stream[]; update(p: Partial<Project>): Promise<boolean> }) {
+export default function Import({ project, ds, update }: { project: Project; ds: Stream[]; update(change: (p: Project) => Partial<Project>): Promise<boolean> }) {
   const [over, setOver] = useState(false)
   const [busy, setBusy] = useState<{ message: string; pct: number } | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -48,7 +48,7 @@ export default function Import({ project, ds, update }: { project: Project; ds: 
     const at = Date.now()
     const snap = snapshot(ctx, uuid(), fmtRequest(at), at)
     const meta = { id: uuid(), files: pending.names, rows: pending.result.streams.length, added: merged.length - before, skipped: pending.result.files.reduce((a, f) => a + f.skipped, 0), at }
-    const saved = await update({ imports: [...(mode === 'merge' ? project.imports : []), meta], snapshots: [...project.snapshots, snap], dataMissing: false })
+    const saved = await update(p => ({ imports: [...(mode === 'merge' ? p.imports : []), meta], snapshots: [...p.snapshots, snap], dataMissing: false }))
     if (saved) toast(`${fmtN(meta.added)} new streams added. Snapshot saved.`, { tone: 'ok' })
     setPending(null)
   }
